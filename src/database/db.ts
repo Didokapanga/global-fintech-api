@@ -1,5 +1,4 @@
 // src/database/db.ts
-
 import { db } from './connection.js';
 
 export async function query(sql: string, params: any[] = []) {
