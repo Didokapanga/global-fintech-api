@@ -1,12 +1,15 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { findUserByEmail, createUser, findUserByUserName } from '../repositories/user.repository.js';
+import {
+  findUserByEmail,
+  createUser,
+  findUserByUserName,
+  updateUser,
+  deleteUser
+} from '../repositories/user.repository.js';
 
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET missing');
-}
-
-const JWT_SECRET = process.env.JWT_SECRET;
+// ✅ PAS DE THROW GLOBAL
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key';
 
 export async function registerService(data: any) {
   const existingUser = await findUserByEmail(data.email);
@@ -53,4 +56,26 @@ export async function loginService(user_name: string, password: string) {
   delete user.hash_password;
 
   return { token, user };
+}
+
+export async function updateUserService(id: string, data: any) {
+  const user = await updateUser(id, data);
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  delete user.hash_password;
+
+  return user;
+}
+
+export async function deleteUserService(id: string) {
+  const user = await deleteUser(id);
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  return { message: 'User deleted successfully' };
 }

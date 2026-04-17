@@ -1,6 +1,4 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
+import 'dotenv/config'; // 🔥 IMPORTANT (remplace dotenv.config())
 
 import app from './app.js';
 import { db } from './database/connection.js';
@@ -8,6 +6,14 @@ import { db } from './database/connection.js';
 console.log('PORT ENV:', process.env.PORT);
 
 const PORT = Number(process.env.PORT) || 3000;
+
+process.on('uncaughtException', (err) => {
+  console.error('❌ UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ UNHANDLED REJECTION:', reason);
+});
 
 async function startServer() {
   try {

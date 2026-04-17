@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { register, login } from '../controllers/auth.controller.js';
+import { register, login, deleteUserController, updateUserController } from '../controllers/auth.controller.js';
 
 const router = Router();
 
@@ -65,5 +65,60 @@ router.post('/register', register);
 */
 
 router.post('/login', login);
+
+/**
+ * @swagger
+ * /api/auth/{id}:
+ *   put:
+ *     summary: Mettre à jour un utilisateur
+ *     tags: [Auth]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: ID UUID de l'utilisateur
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               role_id:
+ *                 type: string
+ *               agence_id:
+ *                 type: string
+ *               user_name:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Utilisateur mis à jour
+ */
+router.put('/:id', updateUserController);
+
+/**
+ * @swagger
+ * /api/auth/{id}:
+ *   delete:
+ *     summary: Supprimer un utilisateur
+ *     tags: [Auth]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: ID UUID de l'utilisateur
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Utilisateur supprimé
+ */
+router.delete('/:id', deleteUserController);
 
 export default router;

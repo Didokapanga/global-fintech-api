@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "node --env-file=.env --loader ts-node/esm src/server.ts",
+    "dev": "tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js"
   },
@@ -21,7 +21,8 @@
     "mysql2": "^3.22.0",
     "pg": "^8.20.0",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

@@ -37,3 +37,36 @@ export async function createUser(data: any) {
 
   return result[0];
 }
+
+export async function updateUser(id: string, data: any) {
+  const result = await query(
+    `UPDATE "user"
+     SET role_id = $1,
+         agence_id = $2,
+         user_name = $3,
+         phone = $4,
+         email = $5,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $6
+     RETURNING *`,
+    [
+      data.role_id,
+      data.agence_id,
+      data.user_name,
+      data.phone,
+      data.email,
+      id
+    ]
+  );
+
+  return result[0];
+}
+
+export async function deleteUser(id: string) {
+  const result = await query(
+    `DELETE FROM "user" WHERE id = $1 RETURNING *`,
+    [id]
+  );
+
+  return result[0];
+}

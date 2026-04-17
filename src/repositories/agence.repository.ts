@@ -1,12 +1,28 @@
 import { query } from '../database/db.js';
 
-export async function getAllAgences() {
-  return await query(`SELECT * FROM agence ORDER BY created_at DESC`);
+export async function getAllAgences(limit: number, offset: number) {
+  const data = await query(
+    `SELECT * FROM agence
+     WHERE is_activated = true
+     ORDER BY created_at DESC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+
+  const totalResult = await query(
+    `SELECT COUNT(*) FROM agence WHERE is_activated = true`
+  );
+
+  const total = Number(totalResult[0].count);
+
+  return { data, total }; // ✅ IMPORTANT
 }
 
 export async function getAgenceById(id: string) {
   const result = await query(
-    `SELECT * FROM agence WHERE id = $1 LIMIT 1`,
+    `SELECT * FROM agence 
+     WHERE id = $1 AND is_activated = true 
+     LIMIT 1`,
     [id]
   );
 
@@ -26,6 +42,43 @@ export async function createAgence(data: any) {
       data.commune,
       data.quartier
     ]
+  );
+
+  return result[0];
+}
+
+export async function updateAgence(id: string, data: any) {
+  const result = await query(
+    `UPDATE agence
+     SET libelle = $1,
+         code_agence = $2,
+         ville = $3,
+         commune = $4,
+         quartier = $5,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $6 AND is_activated = true
+     RETURNING *`,
+    [
+      data.libelle,
+      data.code_agence,
+      data.ville,
+      data.commune,
+      data.quartier,
+      id
+    ]
+  );
+
+  return result[0];
+}
+
+export async function softDeleteAgence(id: string) {
+  const result = await query(
+    `UPDATE agence 
+     SET is_activated = false,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1
+     RETURNING *`,
+    [id]
   );
 
   return result[0];
