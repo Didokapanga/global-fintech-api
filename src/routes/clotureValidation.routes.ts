@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { validateCloture } from '../controllers/clotureValidation.controller.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { roleGuard } from '../middlewares/role.middleware.js';
 
 const router = Router();
 
@@ -42,6 +44,11 @@ const router = Router();
  *       400:
  *         description: Erreur
  */
-router.post('/validate', validateCloture);
+router.post(
+  '/validate',
+  authMiddleware,
+  roleGuard(['N+1', 'ADMIN']),
+  validateCloture
+);
 
 export default router;

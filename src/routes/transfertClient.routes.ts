@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { createTransfertClient } from '../controllers/transfertClient.controller.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { roleGuard } from '../middlewares/role.middleware.js';
 
 const router = Router();
 
@@ -99,6 +101,11 @@ const router = Router();
  *               success: false
  *               message: Montant invalide
  */
-router.post('/', createTransfertClient);
+router.post(
+  '/',
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN']),
+  createTransfertClient
+);
 
 export default router;

@@ -1,3 +1,6 @@
+// src/services/auth.service.ts
+
+import { findUserById, getAllUsers, getUsersByAgence } from '../repositories/user.repository.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import {
@@ -44,18 +47,41 @@ export async function loginService(user_name: string, password: string) {
   }
 
   const token = jwt.sign(
-    {
-      id: user.id,
-      role_id: user.role_id,
-      agence_id: user.agence_id,
-    },
-    JWT_SECRET,
-    { expiresIn: '1d' }
-  );
+  {
+    id: user.id,
+    role_id: user.role_id,
+    role_name: user.role_name,
+    agence_id: user.agence_id,
+  },
+  JWT_SECRET,
+  { expiresIn: '1d' }
+);
 
   delete user.hash_password;
 
   return { token, user };
+}
+
+export async function getAllUsersService() {
+  return await getAllUsers();
+}
+
+export async function getUsersByAgenceService(agence_id: string) {
+  if (!agence_id) {
+    throw new Error('Agence id requis');
+  }
+
+  return await getUsersByAgence(agence_id);
+}
+
+export async function getMeService(userId: string) {
+  const user = await findUserById(userId);
+
+  if (!user) {
+    throw new Error('Utilisateur introuvable');
+  }
+
+  return user;
 }
 
 export async function updateUserService(id: string, data: any) {

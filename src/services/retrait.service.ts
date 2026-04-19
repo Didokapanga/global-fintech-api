@@ -4,11 +4,10 @@ import bcrypt from 'bcrypt';
 import {
   findTransfertForUpdate,
   findCaisseForUpdate,
-  creditCaisse,
-  updateTransfertToExecuted,
   insertLedger,
   createRetrait
 } from '../repositories/retrait.repository.js';
+
 import { logAudit } from '../utils/auditLogger.js';
 
 export async function retraitService(data: any) {
@@ -17,20 +16,36 @@ export async function retraitService(data: any) {
   try {
     await client.query('BEGIN');
 
-    const { code_reference, code_secret, caisse_id, created_by } = data;
+    const {
+      code_reference,
+      code_secret,
+      caisse_id,
+      created_by,
+      ip,
+      user_agent
+    } = data;
 
-    // 🔍 transfert
+    // 🔍 TRANSFERT (LOCK)
     const transfert = await findTransfertForUpdate(client, code_reference);
 
     if (!transfert) {
       throw new Error('Transfert introuvable');
     }
 
-    if (transfert.statut !== 'INITIE') {
-      throw new Error('Transfert déjà utilisé ou invalide');
+    // 🔒 SÉCURITÉ STATUT (ULTRA IMPORTANT)
+    if (transfert.statut === 'INITIE') {
+      throw new Error('Transfert non validé');
     }
 
-    // 🔐 vérifier code
+    if (transfert.statut === 'EXECUTE') {
+      throw new Error('Transfert déjà retiré');
+    }
+
+    if (transfert.statut !== 'VALIDE') {
+      throw new Error('Transfert non disponible pour retrait');
+    }
+
+    // 🔐 VÉRIFICATION CODE SECRET
     const isValid = await bcrypt.compare(
       code_secret,
       transfert.code_secret_hash
@@ -40,16 +55,25 @@ export async function retraitService(data: any) {
       throw new Error('Code secret invalide');
     }
 
-    // 🔍 caisse
+    // 🔍 CAISSE (LOCK)
     const caisse = await findCaisseForUpdate(client, caisse_id);
 
-    if (!caisse || caisse.state !== 'OUVERTE') {
+    if (!caisse) {
+      throw new Error('Caisse introuvable');
+    }
+
+    if (caisse.state !== 'OUVERTE') {
       throw new Error('Caisse non disponible');
+    }
+
+    // 🔥 SÉCURITÉ MÉTIER (TRÈS IMPORTANT)
+    if (caisse.agence_id !== transfert.agence_dest) {
+      throw new Error('Retrait non autorisé dans cette agence');
     }
 
     const montant = Number(transfert.montant);
 
-    // 💾 ENREGISTRER RETRAIT (IMPORTANT)
+    // 💾 CRÉER RETRAIT
     const retrait = await createRetrait(client, {
       agence_id: transfert.agence_dest,
       caisse_id,
@@ -61,32 +85,48 @@ export async function retraitService(data: any) {
       created_by
     });
 
-    // 💰 crédit caisse
-    await creditCaisse(client, caisse_id, montant);
+    // 🔻 DÉBIT CAISSE
+    await client.query(
+      `UPDATE caisse 
+       SET solde = solde - $1 
+       WHERE id = $2`,
+      [montant, caisse_id]
+    );
 
-    // 🔄 statut transfert
-    await updateTransfertToExecuted(client, transfert.id);
+    // 🔄 UPDATE STATUT TRANSFERT
+    await client.query(
+      `UPDATE transfert_client
+       SET statut = 'EXECUTE',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [transfert.id]
+    );
 
-    // 📊 ledger CORRIGÉ
+    // 📊 LEDGER (SORTIE)
     await insertLedger(client, {
-      type_operation: 'RETRAIT', // ✅ CORRECTION
+      type_operation: 'RETRAIT',
       montant,
       devise: transfert.devise,
-      sens: 'ENTREE',
+      sens: 'SORTIE',
       caisse_id,
-      reference_id: retrait.id, // ✅ IMPORTANT
+      reference_id: retrait.id,
       reference_type: 'RETRAIT'
     });
+
+    await client.query('COMMIT');
+
+    // 🔐 AUDIT (APRÈS COMMIT)
+    const { code_secret_hash, ...safeRetrait } = retrait;
 
     await logAudit({
       user_id: created_by,
       action: 'EXECUTE',
       table_name: 'retrait',
       code_reference: transfert.code_reference,
-      new_data: retrait
+      new_data: safeRetrait,
+      ip_address: ip,
+      user_agent
     });
-
-    await client.query('COMMIT');
 
     return {
       message: 'Retrait effectué avec succès',
@@ -96,6 +136,7 @@ export async function retraitService(data: any) {
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
+
   } finally {
     client.release();
   }

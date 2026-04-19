@@ -1,12 +1,54 @@
-import type { RequestHandler } from 'express';
-import { clotureCaisseService } from '../services/clotureCaisse.service.js';
+import type { Response } from 'express';
+import type { AuthRequest } from '../middlewares/auth.middleware.js';
+
+import {
+  clotureCaisseService,
+  validateClotureService
+} from '../services/clotureCaisse.service.js';
+
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 
-export const clotureCaisse: RequestHandler = async (req, res) => {
+// 🔒 CREATE
+export const clotureCaisse = async (req: AuthRequest, res: Response) => {
   try {
-    const result = await clotureCaisseService(req.body);
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json(errorResponse('Non authentifié'));
+    }
+
+    const result = await clotureCaisseService({
+      ...req.body,
+      created_by: user.id,
+      ip: req.ip,
+      user_agent: req.headers['user-agent']
+    });
 
     res.json(successResponse(result.message, result.cloture));
+
+  } catch (err: any) {
+    res.status(400).json(errorResponse(err.message));
+  }
+};
+
+// 🔒 VALIDATE
+export const validateCloture = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json(errorResponse('Non authentifié'));
+    }
+
+    const result = await validateClotureService({
+      ...req.body,
+      validated_by: user.id,
+      ip: req.ip,
+      user_agent: req.headers['user-agent']
+    });
+
+    res.json(successResponse(result.message, result.cloture));
+
   } catch (err: any) {
     res.status(400).json(errorResponse(err.message));
   }

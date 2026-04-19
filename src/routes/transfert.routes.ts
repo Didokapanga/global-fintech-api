@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { transfertCaisse } from '../controllers/transfert.controller.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { roleGuard } from '../middlewares/role.middleware.js';
 
 const router = Router();
 
@@ -40,6 +42,11 @@ const router = Router();
  *       200:
  *         description: Transfert réussi
  */
-router.post('/', transfertCaisse);
+router.post(
+  '/',
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN', 'N+1']),
+  transfertCaisse
+);
 
 export default router;

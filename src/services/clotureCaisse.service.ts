@@ -5,6 +5,7 @@ import {
   closeCaisse,
   updateClotureStatus
 } from '../repositories/clotureCaisse.repository.js';
+
 import { logAudit } from '../utils/auditLogger.js';
 
 export async function clotureCaisseService(data: any) {
@@ -13,7 +14,14 @@ export async function clotureCaisseService(data: any) {
   try {
     await client.query('BEGIN');
 
-    const { caisse_id, solde_physique, ecart, created_by } = data;
+    const {
+      caisse_id,
+      solde_physique,
+      ecart,
+      created_by,
+      ip,
+      user_agent
+    } = data;
 
     const caisse = await findCaisseForUpdate(client, caisse_id);
 
@@ -32,42 +40,40 @@ export async function clotureCaisseService(data: any) {
       throw new Error('Solde physique invalide');
     }
 
-    // ✅ logique flexible
     let ecartFinal: number;
 
     if (ecart !== undefined && ecart !== null) {
       ecartFinal = Number(ecart);
-
-      if (isNaN(ecartFinal)) {
-        throw new Error('Ecart invalide');
-      }
+      if (isNaN(ecartFinal)) throw new Error('Ecart invalide');
     } else {
       ecartFinal = solde_physique_num - solde_systeme;
     }
 
+    // 💾 création UNIQUEMENT
     const cloture = await createCloture(client, {
       caisse_id,
       solde_systeme,
       solde_physique: solde_physique_num,
       ecart: ecartFinal,
       devise: caisse.devise,
-      created_by
+      created_by,
+      statut: 'INITIE' // 🔥 IMPORTANT
     });
-
-       await logAudit({
-        user_id: created_by,
-        action: 'CREATE',
-        table_name: 'cloture_caisse',
-        code_reference: cloture.id,
-        new_data: cloture
-      });
-
-    await closeCaisse(client, caisse_id);
 
     await client.query('COMMIT');
 
+    await logAudit({
+      user_id: created_by,
+      action: 'CREATE',
+      table_name: 'cloture_caisse',
+      code_reference: cloture.id,
+      new_data: cloture,
+      ip_address: ip,
+      user_agent
+    });
+
     return {
-      message: 'Clôture effectuée',
+      message: 'Clôture initiée',
       cloture
     };
 
@@ -85,9 +91,8 @@ export async function validateClotureService(data: any) {
   try {
     await client.query('BEGIN');
 
-    const { cloture_id, decision, validated_by } = data;
+    const { cloture_id, decision, validated_by, ip, user_agent } = data;
 
-    // 🔍 récupérer cloture
     const res = await client.query(
       `SELECT * FROM cloture_caisse WHERE id = $1 FOR UPDATE`,
       [cloture_id]
@@ -105,13 +110,8 @@ export async function validateClotureService(data: any) {
 
     let newStatus = 'INITIE';
 
-    if (decision === 'APPROUVE') {
-      newStatus = 'VALIDE';
-    }
-
-    if (decision === 'REJETE') {
-      newStatus = 'REJETE';
-    }
+    if (decision === 'APPROUVE') newStatus = 'VALIDE';
+    if (decision === 'REJETE') newStatus = 'REJETE';
 
     const updated = await updateClotureStatus(
       client,
@@ -120,10 +120,26 @@ export async function validateClotureService(data: any) {
       validated_by
     );
 
+    // 🔒 🔥 FERMETURE ICI SEULEMENT
+    if (newStatus === 'VALIDE') {
+      await closeCaisse(client, cloture.caisse_id);
+    }
+
     await client.query('COMMIT');
 
+    await logAudit({
+      user_id: validated_by,
+      action: 'VALIDATE',
+      table_name: 'cloture_caisse',
+      code_reference: cloture.id,
+      old_data: { statut: cloture.statut },
+      new_data: { statut: newStatus },
+      ip_address: ip,
+      user_agent
+    });
+
     return {
-      message: 'Clôture validée',
+      message: 'Clôture traitée',
       cloture: updated
     };
 

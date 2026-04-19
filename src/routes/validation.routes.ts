@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { validateOperation } from '../controllers/validation.controller.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { roleGuard } from '../middlewares/role.middleware.js';
 
 const router = Router();
 
@@ -53,6 +55,11 @@ const router = Router();
  *       400:
  *         description: Erreur
  */
-router.post('/', validateOperation);
+router.post(
+  '/',
+  authMiddleware,
+  roleGuard(['N+1', 'ADMIN']),
+  validateOperation
+);
 
 export default router;

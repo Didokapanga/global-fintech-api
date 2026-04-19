@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { clotureCaisse } from '../controllers/clotureCaisse.controller.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { roleGuard } from '../middlewares/role.middleware.js';
 
 const router = Router();
 
@@ -68,6 +70,11 @@ const router = Router();
  *               success: false
  *               message: Caisse déjà fermée
  */
-router.post('/', clotureCaisse);
+router.post(
+  '/',
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN']),
+  clotureCaisse
+);
 
 export default router;

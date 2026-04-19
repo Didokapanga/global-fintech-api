@@ -1,58 +1,108 @@
-import { getCaisseById } from '../repositories/caisse.repository.js';
-import { createMouvement, updateCaisseSolde } from '../repositories/mouvement.repository.js';
+import { db } from '../database/connection.js';
 import { createLedgerEntry } from '../repositories/ledger.repository.js';
+import { logAudit } from '../utils/auditLogger.js';
+import { generateReference } from '../utils/codeGenerator.js';
 
 export async function createMouvementService(data: any) {
-  const { caisse_id, montant, type_mouvement } = data;
+  const client = await db.connect();
 
-  if (!caisse_id || !montant || montant <= 0) {
-    throw new Error('Invalid data');
-  }
+  try {
+    await client.query('BEGIN');
 
-  const caisse = await getCaisseById(caisse_id);
+    const {
+      caisse_id,
+      montant,
+      type_mouvement,
+      devise,
+      created_by,
+      ip,
+      user_agent
+    } = data;
 
-  if (!caisse) {
-    throw new Error('Caisse not found');
-  }
+    if (!caisse_id || !montant || montant <= 0) {
+      throw new Error('Invalid data');
+    }
 
-  if (caisse.state !== 'OUVERTE') {
-    throw new Error('Caisse non ouverte');
-  }
+    // 🔒 LOCK CAISSE
+    const caisseRes = await client.query(
+      `SELECT * FROM caisse WHERE id = $1 FOR UPDATE`,
+      [caisse_id]
+    );
 
-  let soldeChange = montant;
+    const caisse = caisseRes.rows[0];
 
-  // 🔴 SORTIE
-  if (
-    type_mouvement === 'RETRAIT_SORTIE' ||
-    type_mouvement === 'TRANSFERT_SORTIE'
-  ) {
-    if (caisse.solde < montant) {
+    if (!caisse) throw new Error('Caisse not found');
+
+    if (caisse.state !== 'OUVERTE') {
+      throw new Error('Caisse non ouverte');
+    }
+
+    const isSortie =
+      type_mouvement === 'RETRAIT_SORTIE' ||
+      type_mouvement === 'TRANSFERT_SORTIE';
+
+    let soldeChange = isSortie ? -montant : montant;
+
+    if (isSortie && caisse.solde < montant) {
       throw new Error('Solde insuffisant');
     }
 
-    soldeChange = -montant;
-  }
+    // 💰 UPDATE SOLDE
+    await client.query(
+      `UPDATE caisse SET solde = solde + $1 WHERE id = $2`,
+      [soldeChange, caisse_id]
+    );
 
-  // 💾 update solde
-  await updateCaisseSolde(caisse_id, soldeChange);
+    // 🔥 CODE AUTO
+    const code_reference = generateReference('MVT');
 
-  // 🧾 log mouvement
-  const mouvement = await createMouvement(data);
+    // 💾 INSERT MOUVEMENT
+    const mouvementRes = await client.query(
+      `INSERT INTO mouvement_caisse
+      (caisse_id, type_mouvement, montant, devise, code_reference, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6)
+      RETURNING *`,
+      [caisse_id, type_mouvement, montant, devise, code_reference, created_by]
+    );
 
-    // 🎯 déterminer sens
-    const isSortie =
-    type_mouvement === 'RETRAIT_SORTIE' ||
-    type_mouvement === 'TRANSFERT_SORTIE';
+    const mouvement = mouvementRes.rows[0];
 
-    await createLedgerEntry({
-    type_operation: type_mouvement,
-    montant,
-    devise: data.devise,
-    sens: isSortie ? 'SORTIE' : 'ENTREE',
-    caisse_id,
-    reference_id: mouvement.id,
-    reference_type: 'MOUVEMENT_CAISSE'
+    // 📊 LEDGER
+    await client.query(
+      `INSERT INTO ledger
+      (type_operation, montant, devise, sens, caisse_id, reference_id, reference_type)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        type_mouvement,
+        montant,
+        devise,
+        isSortie ? 'SORTIE' : 'ENTREE',
+        caisse_id,
+        mouvement.id,
+        'MOUVEMENT_CAISSE'
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    // 🔐 AUDIT
+    await logAudit({
+      user_id: created_by,
+      action: 'CREATE',
+      table_name: 'mouvement_caisse',
+      code_reference: code_reference,
+      new_data: mouvement,
+      ip_address: ip,
+      user_agent
     });
 
     return mouvement;
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+
+  } finally {
+    client.release();
+  }
 }

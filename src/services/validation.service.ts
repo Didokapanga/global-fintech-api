@@ -14,10 +14,11 @@ export async function validateOperationService(data: any) {
       decision,
       niveau,
       validated_by,
-      commentaire
+      commentaire,
+      ip,
+      user_agent
     } = data;
 
-    // 🔍 récupérer opération
     const tableMap: any = {
       TRANSFERT_CLIENT: 'transfert_client',
       RETRAIT: 'retrait',
@@ -25,7 +26,6 @@ export async function validateOperationService(data: any) {
     };
 
     const table = tableMap[operation_type];
-
     if (!table) throw new Error('Type opération invalide');
 
     const res = await client.query(
@@ -34,37 +34,56 @@ export async function validateOperationService(data: any) {
     );
 
     const operation = res.rows[0];
-
-    if (!operation) {
-      throw new Error('Opération introuvable');
-    }
+    if (!operation) throw new Error('Opération introuvable');
 
     const oldStatus = operation.statut;
 
-    if (oldStatus !== 'INITIE') {
-      throw new Error('Opération déjà traitée');
+    if (oldStatus === 'REJETE' || oldStatus === 'EXECUTE') {
+      throw new Error('Opération déjà terminée');
     }
 
     let newStatus = oldStatus;
 
-    // 🧠 logique validation
+    // 🔥 logique métier
     if (decision === 'APPROUVE') {
-      newStatus = 'VALIDE';
+      if (operation_type === 'TRANSFERT_CLIENT') {
+        newStatus = 'VALIDE'; // ✅ jamais EXECUTE ici
+      }
+
+      if (operation_type === 'TRANSFERT_CAISSE') {
+        if (niveau === 'N2') newStatus = 'EXECUTE';
+        else newStatus = 'VALIDE';
+      }
     }
 
     if (decision === 'REJETE') {
       newStatus = 'REJETE';
     }
 
-    // 🔄 update statut
     await client.query(
       `UPDATE ${table}
-       SET statut = $1, updated_at = CURRENT_TIMESTAMP
+       SET statut = $1
        WHERE id = $2`,
       [newStatus, reference_id]
     );
 
-    // 📝 log validation
+    // ❌ AUCUNE ACTION CASH POUR TRANSFERT CLIENT
+
+    // 🔁 transfert caisse uniquement
+    if (newStatus === 'EXECUTE' && operation_type === 'TRANSFERT_CAISSE') {
+      const montant = Number(operation.montant);
+
+      await client.query(
+        `UPDATE caisse SET solde = solde - $1 WHERE id = $2`,
+        [montant, operation.caisse_source_id]
+      );
+
+      await client.query(
+        `UPDATE caisse SET solde = solde + $1 WHERE id = $2`,
+        [montant, operation.caisse_destination_id]
+      );
+    }
+
     await createValidationLog({
       operation_type,
       reference_id,
@@ -76,16 +95,18 @@ export async function validateOperationService(data: any) {
       statut_apres: newStatus
     });
 
+    await client.query('COMMIT');
+
     await logAudit({
       user_id: validated_by,
       action: 'VALIDATE',
       table_name: operation_type,
       code_reference: reference_id,
       old_data: { statut: oldStatus },
-      new_data: { statut: newStatus }
+      new_data: { statut: newStatus },
+      ip_address: ip,
+      user_agent
     });
-
-    await client.query('COMMIT');
 
     return {
       message: 'Validation effectuée',
@@ -95,6 +116,7 @@ export async function validateOperationService(data: any) {
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
+
   } finally {
     client.release();
   }

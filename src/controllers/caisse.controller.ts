@@ -6,7 +6,8 @@ import {
   updateCaisseService,
   deleteCaisseService,
   openCaisseService,
-  closeCaisseService
+  closeCaisseService,
+  getCaissesByAgenceService
 } from '../services/caisse.service.js';
 
 import { paginatedResponse } from '../utils/pagination.js';
@@ -67,6 +68,19 @@ export const closeCaisse: RequestHandler = async (req, res) => {
     const caisse = await closeCaisseService(id);
 
     res.json(successResponse('Caisse fermée avec succès', caisse));
+  } catch (error: any) {
+    res.status(400).json(errorResponse(error.message));
+  }
+};
+
+export const getCaissesByAgence: RequestHandler = async (req, res) => {
+  try {
+    const agence_id = req.params.agence_id as string;
+
+    const caisses = await getCaissesByAgenceService(agence_id);
+
+    res.json(successResponse('Caisses récupérées', caisses));
+
   } catch (error: any) {
     res.status(400).json(errorResponse(error.message));
   }

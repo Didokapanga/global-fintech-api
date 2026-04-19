@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { register, login, deleteUserController, updateUserController } from '../controllers/auth.controller.js';
+import { register, login, deleteUserController, updateUserController, getUsersByAgenceController, getAllUsersController, getMe } from '../controllers/auth.controller.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { roleGuard } from '../middlewares/role.middleware.js';
 
 const router = Router();
 
@@ -9,6 +11,66 @@ const router = Router();
  *   name: Auth
  *   description: Authentification
  */
+
+/**
+ * @swagger
+ * /api/auth:
+ *   get:
+ *     summary: Liste de tous les utilisateurs
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Liste des utilisateurs
+ */
+router.get('/', authMiddleware, roleGuard(['ADMIN']), getAllUsersController);
+
+/**
+ * @swagger
+ * /api/auth/agence/{agence_id}:
+ *   get:
+ *     summary: Liste des utilisateurs par agence
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: agence_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Utilisateurs de l’agence
+ */
+router.get('/agence/:agence_id', authMiddleware, roleGuard(['ADMIN', 'N+1']),getUsersByAgenceController);
+
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     summary: Récupérer l'utilisateur connecté
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Informations utilisateur
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Profil récupéré
+ *               data:
+ *                 id: uuid
+ *                 user_name: admin
+ *                 role_name: ADMIN
+ *                 agence_name: Kinshasa
+ *       401:
+ *         description: Non authentifié
+ */
+router.get('/me', authMiddleware, getMe);
 
 /**
  * @swagger
@@ -24,9 +86,9 @@ const router = Router();
  *             type: object
  *             properties:
  *               role_id:
- *                 type: number
+ *                 type: string
  *               agence_id:
- *                 type: number
+ *                 type: string
  *               user_name:
  *                 type: string
  *               phone:

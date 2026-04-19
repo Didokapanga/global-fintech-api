@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { retrait } from '../controllers/retrait.controller.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { roleGuard } from '../middlewares/role.middleware.js';
 
 const router = Router();
 
@@ -68,6 +70,11 @@ const router = Router();
  *               success: false
  *               message: Code secret invalide
  */
-router.post('/', retrait);
+router.post(
+  '/',
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN']),
+  retrait
+);
 
 export default router;

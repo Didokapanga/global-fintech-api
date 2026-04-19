@@ -6,7 +6,8 @@ import {
   updateCaisse,
   deleteCaisse,
   closeCaisse,
-  openCaisse
+  openCaisse,
+  getCaissesByAgence
 } from '../controllers/caisse.controller.js';
 
 const router = Router();
@@ -70,6 +71,24 @@ router.get('/', getCaisses);
  *         description: Données invalides
  */
 router.post('/', createCaisse);
+
+/**
+ * @swagger
+ * /api/caisses/agence/{agence_id}:
+ *   get:
+ *     summary: Liste des caisses par agence
+ *     tags: [Caisses]
+ *     parameters:
+ *       - in: path
+ *         name: agence_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Liste des caisses
+ */
+router.get('/agence/:agence_id', getCaissesByAgence);
 
 /**
  * @swagger

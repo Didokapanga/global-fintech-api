@@ -4,7 +4,6 @@ import { generateCode } from '../utils/codeGenerator.js';
 import { createTransfertClientTx } from '../repositories/transfertClient.repository.js';
 import { logAudit } from '../utils/auditLogger.js';
 
-
 export async function createTransfertClientService(data: any) {
   const client = await db.connect();
 
@@ -27,7 +26,7 @@ export async function createTransfertClientService(data: any) {
       throw new Error('Pièce d’identité requise');
     }
 
-    // 🔍 caisse lock
+    // 🔒 lock caisse
     const caisseRes = await client.query(
       `SELECT * FROM caisse WHERE id = $1 FOR UPDATE`,
       [caisse_id]
@@ -39,23 +38,19 @@ export async function createTransfertClientService(data: any) {
       throw new Error('Caisse non disponible');
     }
 
-    if (caisse.solde < montant) {
-      throw new Error('Solde insuffisant');
-    }
-
     // 🔐 code secret
     const code = generateCode();
     const hash = await bcrypt.hash(code, 10);
 
     const code_reference = 'REF' + Date.now();
 
-    // 🔻 débit caisse
+    // 💰 🔥 CASH REÇU (CORRECTION PRINCIPALE)
     await client.query(
-      `UPDATE caisse SET solde = solde - $1 WHERE id = $2`,
+      `UPDATE caisse SET solde = solde + $1 WHERE id = $2`,
       [montant, caisse_id]
     );
 
-    // 💾 insertion via repo
+    // 💾 insertion transfert
     const transfert = await createTransfertClientTx(client, {
       ...data,
       type_piece,
@@ -65,10 +60,11 @@ export async function createTransfertClientService(data: any) {
       frais: data.frais ?? 0,
       commission: data.commission ?? 0,
       code_secret_hash: hash,
-      code_reference
+      code_reference,
+      statut: 'INITIE'
     });
 
-    // 📊 ledger SORTIE
+    // 📊 ledger ENTREE
     await client.query(
       `INSERT INTO ledger
       (type_operation, montant, devise, sens, caisse_id, reference_id, reference_type)
@@ -77,33 +73,36 @@ export async function createTransfertClientService(data: any) {
         'TRANSFERT_CLIENT',
         montant,
         devise,
-        'SORTIE',
+        'ENTREE', // 🔥 IMPORTANT
         caisse_id,
         transfert.id,
         'TRANSFERT_CLIENT'
       ]
     );
 
+    await client.query('COMMIT');
+
+    const { code_secret_hash, ...safeTransfert } = transfert;
+
     await logAudit({
       user_id: data.created_by,
       action: 'CREATE',
       table_name: 'transfert_client',
       code_reference: transfert.code_reference,
-      new_data: transfert,
+      new_data: safeTransfert,
       ip_address: data.ip,
       user_agent: data.user_agent
     });
 
-    await client.query('COMMIT');
-
     return {
       transfert,
-      code_secret: code // ⚠️ une seule fois
+      code_secret: code
     };
 
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
+
   } finally {
     client.release();
   }

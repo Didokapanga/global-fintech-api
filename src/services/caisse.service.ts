@@ -2,6 +2,7 @@ import {
   createCaisse,
   getAllCaisses,
   getCaisseById,
+  getCaissesByAgence,
   softDeleteCaisse,
   updateCaisse,
   updateCaisseState
@@ -31,6 +32,14 @@ export async function getCaisseService(id: string) {
   }
 
   return caisse;
+}
+
+export async function getCaissesByAgenceService(agence_id: string) {
+  if (!agence_id) {
+    throw new Error('Agence id requis');
+  }
+
+  return await getCaissesByAgence(agence_id);
 }
 
 export async function openCaisseService(id: string) {
