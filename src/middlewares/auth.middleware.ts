@@ -15,7 +15,7 @@ export function authMiddleware(
   try {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
         success: false,
         message: 'Token manquant'
@@ -24,6 +24,7 @@ export function authMiddleware(
 
     const token = authHeader.split(' ')[1];
 
+    // 🔥 FIX CRITIQUE
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -31,9 +32,16 @@ export function authMiddleware(
       });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    console.log('DECODED =>', decoded);
 
-    req.user = decoded;
+    req.user = {
+      id: decoded.id,
+      role_id: decoded.role_id,
+      role_name: decoded.role_name,
+      agence_id: decoded.agence_id
+    };
+    console.log('REQ.USER =>', req.user);
 
     next();
 
@@ -44,28 +52,3 @@ export function authMiddleware(
     });
   }
 }
-
-
-
-// import type { Request, Response, NextFunction } from 'express';
-// import jwt from 'jsonwebtoken';
-
-// const JWT_SECRET = process.env.JWT_SECRET || 'secret';
-
-// export function authMiddleware(req: any, res: Response, next: NextFunction) {
-//   try {
-//     const token = req.headers.authorization?.split(' ')[1];
-
-//     if (!token) {
-//       return res.status(401).json({ message: 'Unauthorized' });
-//     }
-
-//     const decoded = jwt.verify(token, JWT_SECRET);
-
-//     req.user = decoded;
-
-//     next();
-//   } catch {
-//     res.status(401).json({ message: 'Invalid token' });
-//   }
-// }

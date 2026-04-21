@@ -23,22 +23,54 @@ export async function createClient(data: any) {
 }
 
 // GET ALL (pagination ready)
-export async function getClients(limit: number, offset: number) {
+export async function getClients(
+  limit: number,
+  offset: number,
+  search?: string
+) {
+  let baseQuery = `
+    FROM client
+    WHERE is_activated = true
+  `;
+
+  // console.log("🔥 BACKEND SEARCH =", search);
+
+  const values: any[] = [];
+  let index = 1;
+
+  // 🔥 SEARCH
+  if (search) {
+    baseQuery += `
+      AND (
+        name ILIKE $${index} OR
+        first_name ILIKE $${index} OR
+        second_name ILIKE $${index} OR
+        phone ILIKE $${index}
+      )
+    `;
+    values.push(`%${search}%`);
+    index++;
+  }
+
+  // DATA
   const data = await query(
-    `SELECT * FROM client
-     WHERE is_activated = true
-     ORDER BY created_at DESC
-     LIMIT $1 OFFSET $2`,
-    [limit, offset]
+    `
+    SELECT * ${baseQuery}
+    ORDER BY created_at DESC
+    LIMIT $${index} OFFSET $${index + 1}
+    `,
+    [...values, limit, offset]
   );
 
+  // TOTAL
   const totalRes = await query(
-    `SELECT COUNT(*) FROM client WHERE is_activated = true`
+    `SELECT COUNT(*) ${baseQuery}`,
+    values
   );
 
   return {
     data,
-    total: Number(totalRes[0].count)
+    total: Number(totalRes[0].count),
   };
 }
 

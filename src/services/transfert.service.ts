@@ -1,5 +1,11 @@
 import { db } from '../database/connection.js';
 import { logAudit } from '../utils/auditLogger.js';
+import {
+  getAllTransferts,
+  getTransfertsByAgence,
+  getTransfertsByAgent,
+  getTransfertsCaisseToProcess
+} from '../repositories/transfert.repository.js';
 
 export async function transfertCaisseService(data: any) {
   const client = await db.connect();
@@ -84,4 +90,52 @@ export async function transfertCaisseService(data: any) {
   } finally {
     client.release();
   }
+}
+
+// 🔍 BY ID sécurisé
+export async function getTransfertsService(
+  user: any,
+  limit: number,
+  offset: number
+) {
+  const role = user.role_name?.toUpperCase();
+  const agenceId = user.agence_id;
+
+  // 🔴 ADMIN → tout
+  if (role === 'ADMIN') {
+    return await getAllTransferts(limit, offset);
+  }
+
+  // 🟡 N+1 / N+2 → agence
+  if (['N+1', 'N+2'].includes(role)) {
+    return await getTransfertsByAgence(agenceId, limit, offset);
+  }
+
+  // 🟢 CAISSIER → 🔥 SES PROPRES TRANSFERTS
+  if (role === 'CAISSIER') {
+    return await getTransfertsByAgent(user.id, limit, offset);
+  }
+
+  throw new Error('Accès refusé');
+}
+
+export async function getTransfertsCaisseToProcessService(
+  user: any,
+  limit: number,
+  offset: number
+) {
+  if (!user?.agence_id) {
+    throw new Error('Agence utilisateur manquante');
+  }
+
+  // 🔐 sécurité métier
+  if (!['ADMIN', 'N+1', 'N+2'].includes(user.role_name)) {
+    throw new Error('Accès refusé');
+  }
+
+  return await getTransfertsCaisseToProcess(
+    user.agence_id,
+    limit,
+    offset
+  );
 }

@@ -9,6 +9,8 @@ import {
   openCaisse,
   getCaissesByAgence
 } from '../controllers/caisse.controller.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { roleGuard } from '../middlewares/role.middleware.js';
 
 const router = Router();
 
@@ -29,7 +31,11 @@ const router = Router();
  *       200:
  *         description: Liste des caisses
  */
-router.get('/', getCaisses);
+router.get(
+  '/', 
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN', 'N+1', 'N+2']),
+  getCaisses);
 
 /**
  * @swagger
@@ -70,7 +76,11 @@ router.get('/', getCaisses);
  *       400:
  *         description: Données invalides
  */
-router.post('/', createCaisse);
+router.post(
+  '/', 
+  authMiddleware,
+  roleGuard(['ADMIN', 'N+1', 'N+2']),
+  createCaisse);
 
 /**
  * @swagger
@@ -88,7 +98,11 @@ router.post('/', createCaisse);
  *       200:
  *         description: Liste des caisses
  */
-router.get('/agence/:agence_id', getCaissesByAgence);
+router.get(
+  '/agence/:agence_id', 
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN', 'N+1', 'N+2']),
+  getCaissesByAgence);
 
 /**
  * @swagger
@@ -109,7 +123,11 @@ router.get('/agence/:agence_id', getCaissesByAgence);
  *       404:
  *         description: Caisse non trouvée
  */
-router.get('/:id', getCaisse);
+router.get(
+  '/:id', 
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN', 'N+1', 'N+2']),
+  getCaisse);
 
 /**
  * @swagger
@@ -128,7 +146,11 @@ router.get('/:id', getCaisse);
  *       200:
  *         description: Caisse ouverte avec succès
  */
-router.post('/:id/open', openCaisse);
+router.post(
+  '/:id/open',
+  authMiddleware,
+  roleGuard(['CAISSIER', 'N+1', 'N+2']),
+  openCaisse);
 
 /**
  * @swagger
@@ -147,7 +169,11 @@ router.post('/:id/open', openCaisse);
  *       200:
  *         description: Caisse fermée avec succès
  */
-router.post('/:id/close', closeCaisse);
+router.post(
+  '/:id/close', 
+  authMiddleware,
+  roleGuard(['CAISSIER', 'N+1', 'N+2']),
+  closeCaisse);
 
 /**
  * @swagger
@@ -185,7 +211,11 @@ router.post('/:id/close', closeCaisse);
  *       400:
  *         description: Données invalides
  */
-router.put('/:id', updateCaisse);
+router.put(
+  '/:id', 
+  authMiddleware,
+  roleGuard(['ADMIN', 'N+1', 'N+2']),
+  updateCaisse);
 
 /**
  * @swagger
@@ -206,6 +236,10 @@ router.put('/:id', updateCaisse);
  *       404:
  *         description: Caisse non trouvée
  */
-router.delete('/:id', deleteCaisse);
+router.delete(
+  '/:id', 
+  authMiddleware,
+  roleGuard(['ADMIN', 'N+1', 'N+2']),
+  deleteCaisse);
 
 export default router;

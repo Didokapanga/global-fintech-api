@@ -61,6 +61,122 @@ export async function createTransfertClientTx(client: PoolClient, data: any) {
   return result.rows[0];
 }
 
+// 🔍 GET BY AGENCE
+export async function getTransfertsClientByAgence(
+  agence_id: string,
+  limit: number,
+  offset: number
+) {
+  const data = await query(
+    `SELECT *
+     FROM transfert_client
+     WHERE agence_exp = $1 OR agence_dest = $1
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [agence_id, limit, offset]
+  );
+
+  const totalRes = await query(
+    `SELECT COUNT(*)
+     FROM transfert_client
+     WHERE agence_exp = $1 OR agence_dest = $1`,
+    [agence_id]
+  );
+
+  return {
+    data,
+    total: Number(totalRes[0].count)
+  };
+}
+
+// 🔍 GET BY AGENT
+export async function getTransfertsClientByAgent(
+  user_id: string,
+  limit: number,
+  offset: number
+) {
+  const data = await query(
+    `SELECT *
+     FROM transfert_client
+     WHERE created_by = $1
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [user_id, limit, offset]
+  );
+
+  const totalRes = await query(
+    `SELECT COUNT(*)
+     FROM transfert_client
+     WHERE created_by = $1`,
+    [user_id]
+  );
+
+  return {
+    data,
+    total: Number(totalRes[0].count)
+  };
+}
+
+// 🔥 VERSION SÉCURISÉE
+export async function getTransfertsClientToValidate(
+  agence_id: string,
+  limit: number,
+  offset: number
+) {
+  const data = await query(
+    `SELECT *
+     FROM transfert_client
+     WHERE statut = 'INITIE'
+       AND agence_exp = $1
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [agence_id, limit, offset]
+  );
+
+  const totalRes = await query(
+    `SELECT COUNT(*)
+     FROM transfert_client
+     WHERE statut = 'INITIE'
+       AND agence_exp = $1`,
+    [agence_id]
+  );
+
+  return {
+    data,
+    total: Number(totalRes[0].count)
+  };
+}
+
+// 🔥 TRANSFERTS DISPONIBLES POUR RETRAIT
+export async function getTransfertsClientToWithdraw(
+  agence_id: string,
+  limit: number,
+  offset: number
+) {
+  const data = await query(
+    `SELECT *
+     FROM transfert_client
+     WHERE statut = 'VALIDE'
+       AND agence_dest = $1
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [agence_id, limit, offset]
+  );
+
+  const totalRes = await query(
+    `SELECT COUNT(*)
+     FROM transfert_client
+     WHERE statut = 'VALIDE'
+       AND agence_dest = $1`,
+    [agence_id]
+  );
+
+  return {
+    data,
+    total: Number(totalRes[0].count)
+  };
+}
+
 export async function findTransfertByReference(code: string) {
   const res = await query(
     `SELECT * FROM transfert_client WHERE code_reference = $1`,

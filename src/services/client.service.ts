@@ -14,10 +14,14 @@ export async function createClientService(data: any) {
   return await createClient(data);
 }
 
-export async function getClientsService(page = 1, limit = 10) {
+export async function getClientsService(
+  page = 1,
+  limit = 10,
+  search?: string
+) {
   const offset = (page - 1) * limit;
 
-  return await getClients(limit, offset);
+  return await getClients(limit, offset, search);
 }
 
 export async function getClientService(id: string) {

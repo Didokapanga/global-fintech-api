@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createTransfertClient } from '../controllers/transfertClient.controller.js';
+import { createTransfertClient, getTransfertClientByAgence, getTransfertClientByAgent, getTransfertsClientToValidate, getTransfertsClientToWithdraw } from '../controllers/transfertClient.controller.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { roleGuard } from '../middlewares/role.middleware.js';
 
@@ -106,6 +106,150 @@ router.post(
   authMiddleware,
   roleGuard(['CAISSIER', 'ADMIN']),
   createTransfertClient
+);
+
+/**
+ * @swagger
+ * /api/transfert-client/agence/{agence_id}:
+ *   get:
+ *     summary: Liste des transferts client par agence
+ *     tags: [TransfertClient]
+ *     parameters:
+ *       - in: path
+ *         name: agence_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: uuid-agence
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: number
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: number
+ *         example: 10
+ *     responses:
+ *       200:
+ *         description: Liste des transferts de l’agence
+ */
+router.get(
+  '/agence/:agence_id',
+  authMiddleware,
+  roleGuard(['ADMIN', 'N+1', 'N+2']),
+  getTransfertClientByAgence
+);
+
+/**
+ * @swagger
+ * /api/transfert-client/me:
+ *   get:
+ *     summary: Liste des transferts du caissier connecté
+ *     tags: [TransfertClient]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: number
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: number
+ *         example: 10
+ *     responses:
+ *       200:
+ *         description: Liste des transferts de l'utilisateur
+ */
+router.get(
+  '/me',
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN', 'N+1', 'N+2']),
+  getTransfertClientByAgent
+);
+
+/**
+ * @swagger
+ * /api/transfert-client/validation:
+ *   get:
+ *     summary: Liste des transferts à valider (statut INITIE)
+ *     description: |
+ *       Retourne les transferts clients en attente de validation.
+ *
+ *       🔐 Basé sur l’agence du user connecté
+ *       📊 Pagination incluse
+ *
+ *     tags: [TransfertClient]
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: number
+ *           example: 1
+ *
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: number
+ *           example: 10
+ *
+ *     responses:
+ *       200:
+ *         description: Liste des transferts INITIE
+ *       401:
+ *         description: Non authentifié
+ */
+
+router.get(
+  '/validation',
+  authMiddleware,
+  roleGuard(['ADMIN', 'N+1', 'N+2']),
+  getTransfertsClientToValidate
+);
+
+/**
+ * @swagger
+ * /api/transfert-client/retrait:
+ *   get:
+ *     summary: Transferts disponibles pour retrait (VALIDE)
+ *     description: |
+ *       Retourne les transferts clients VALIDÉS,
+ *       disponibles pour retrait dans l’agence destination.
+ *
+ *       🔐 Filtré par agence du user connecté
+ *
+ *     tags: [TransfertClient]
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: number
+ *           example: 1
+ *
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: number
+ *           example: 10
+ *
+ *     responses:
+ *       200:
+ *         description: Liste des transferts prêts pour retrait
+ */
+
+router.get(
+  '/retrait',
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN', 'N+1', 'N+2']),
+  getTransfertsClientToWithdraw
 );
 
 export default router;

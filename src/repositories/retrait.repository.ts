@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { db } from '../database/connection.js';
 
 // 🔍 récupérer transfert
 export async function findTransfertForUpdate(client: PoolClient, code_reference: string) {
@@ -77,4 +78,32 @@ export async function insertLedger(client: PoolClient, data: any) {
       data.reference_type
     ]
   );
+}
+
+// 🔍 historique retrait par agent
+export async function getRetraitsByAgent(
+  agent_id: string,
+  limit: number,
+  offset: number
+) {
+  const dataRes = await db.query(
+    `SELECT *
+     FROM retrait
+     WHERE created_by = $1
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [agent_id, limit, offset]
+  );
+
+  const countRes = await db.query(
+    `SELECT COUNT(*) 
+     FROM retrait 
+     WHERE created_by = $1`,
+    [agent_id]
+  );
+
+  return {
+    data: dataRes.rows,
+    total: Number(countRes.rows[0].count)
+  };
 }

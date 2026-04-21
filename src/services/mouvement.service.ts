@@ -1,11 +1,12 @@
 import { db } from '../database/connection.js';
 import { createLedgerEntry } from '../repositories/ledger.repository.js';
+import { getAllMouvementsPaginated, getMouvementsByAgence } from '../repositories/mouvement.repository.js';
 import { logAudit } from '../utils/auditLogger.js';
 import { generateReference } from '../utils/codeGenerator.js';
 
 export async function createMouvementService(data: any) {
   const client = await db.connect();
-
+ 
   try {
     await client.query('BEGIN');
 
@@ -105,4 +106,24 @@ export async function createMouvementService(data: any) {
   } finally {
     client.release();
   }
+}
+
+// 🔹 ADMIN ONLY
+export async function getAllMouvementsService(page: number, limit: number) {
+  return await getAllMouvementsPaginated(page, limit);
+}
+
+// 🔹 PAR AGENCE
+export async function getMouvementsByAgenceService(
+  agence_id: string,
+  page = 1,
+  limit = 10
+) {
+  if (!agence_id) {
+    throw new Error('agence_id requis');
+  }
+
+  const offset = (page - 1) * limit;
+
+  return await getMouvementsByAgence(agence_id, limit, offset);
 }

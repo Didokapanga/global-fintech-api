@@ -5,7 +5,8 @@ import {
   findTransfertForUpdate,
   findCaisseForUpdate,
   insertLedger,
-  createRetrait
+  createRetrait,
+  getRetraitsByAgent
 } from '../repositories/retrait.repository.js';
 
 import { logAudit } from '../utils/auditLogger.js';
@@ -66,14 +67,35 @@ export async function retraitService(data: any) {
       throw new Error('Caisse non disponible');
     }
 
-    // 🔥 SÉCURITÉ MÉTIER (TRÈS IMPORTANT)
+    const montant = Number(transfert.montant);
+
+    // =====================================================
+    // 🔥 SÉCURITÉS CRITIQUES AJOUTÉES
+    // =====================================================
+
+    // 🔒 sécurité agence
     if (caisse.agence_id !== transfert.agence_dest) {
       throw new Error('Retrait non autorisé dans cette agence');
     }
 
-    const montant = Number(transfert.montant);
+    // 🔒 sécurité agent propriétaire
+    if (caisse.agent_id !== created_by) {
+      throw new Error('Retrait autorisé uniquement sur votre caisse');
+    }
 
+    // 🔒 sécurité solde
+    if (caisse.solde < montant) {
+      throw new Error('Solde insuffisant');
+    }
+
+    // 🔒 double protection statut (anti race condition)
+    if (transfert.statut !== 'VALIDE') {
+      throw new Error('Transfert déjà traité ou invalide');
+    }
+
+    // =====================================================
     // 💾 CRÉER RETRAIT
+    // =====================================================
     const retrait = await createRetrait(client, {
       agence_id: transfert.agence_dest,
       caisse_id,
@@ -85,7 +107,9 @@ export async function retraitService(data: any) {
       created_by
     });
 
+    // =====================================================
     // 🔻 DÉBIT CAISSE
+    // =====================================================
     await client.query(
       `UPDATE caisse 
        SET solde = solde - $1 
@@ -93,7 +117,9 @@ export async function retraitService(data: any) {
       [montant, caisse_id]
     );
 
+    // =====================================================
     // 🔄 UPDATE STATUT TRANSFERT
+    // =====================================================
     await client.query(
       `UPDATE transfert_client
        SET statut = 'EXECUTE',
@@ -102,7 +128,9 @@ export async function retraitService(data: any) {
       [transfert.id]
     );
 
+    // =====================================================
     // 📊 LEDGER (SORTIE)
+    // =====================================================
     await insertLedger(client, {
       type_operation: 'RETRAIT',
       montant,
@@ -115,7 +143,9 @@ export async function retraitService(data: any) {
 
     await client.query('COMMIT');
 
+    // =====================================================
     // 🔐 AUDIT (APRÈS COMMIT)
+    // =====================================================
     const { code_secret_hash, ...safeRetrait } = retrait;
 
     await logAudit({
@@ -140,4 +170,16 @@ export async function retraitService(data: any) {
   } finally {
     client.release();
   }
+}
+
+export async function getRetraitsByAgentService(
+  user: any,
+  limit: number,
+  offset: number
+) {
+  if (!user?.id) {
+    throw new Error('Utilisateur non authentifié');
+  }
+
+  return await getRetraitsByAgent(user.id, limit, offset);
 }

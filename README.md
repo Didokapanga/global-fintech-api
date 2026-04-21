@@ -5,6 +5,9 @@ API backend pour la gestion des opérations financières :
 * Transfert client
 * Retrait
 * Transfert de caisse
+* Mouvement de caisse
+* Validation transfert
+* Validation mouvement 
 * Clôture de caisse
 * Ledger & audit
 

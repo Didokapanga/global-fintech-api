@@ -58,7 +58,7 @@ const router = Router();
 router.post(
   '/',
   authMiddleware,
-  roleGuard(['N+1', 'ADMIN']),
+  roleGuard(['N+1', 'N+2', 'CAISSIER', 'ADMIN']),
   validateOperation
 );
 

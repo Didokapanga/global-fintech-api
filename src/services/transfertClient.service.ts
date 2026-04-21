@@ -1,7 +1,7 @@
 import { db } from '../database/connection.js';
 import bcrypt from 'bcrypt';
 import { generateCode } from '../utils/codeGenerator.js';
-import { createTransfertClientTx } from '../repositories/transfertClient.repository.js';
+import { createTransfertClientTx, getTransfertsClientByAgence, getTransfertsClientByAgent, getTransfertsClientToValidate, getTransfertsClientToWithdraw } from '../repositories/transfertClient.repository.js';
 import { logAudit } from '../utils/auditLogger.js';
 
 export async function createTransfertClientService(data: any) {
@@ -106,4 +106,64 @@ export async function createTransfertClientService(data: any) {
   } finally {
     client.release();
   }
+}
+
+// 🔍 BY AGENCE
+export async function getTransfertClientByAgenceService(
+  agence_id: string,
+  limit: number,
+  offset: number
+) {
+  return await getTransfertsClientByAgence(agence_id, limit, offset);
+}
+
+// 🔍 BY AGENT
+export async function getTransfertClientByAgentService(
+  user_id: string,
+  limit: number,
+  offset: number
+) {
+  return await getTransfertsClientByAgent(user_id, limit, offset);
+}
+
+export async function getTransfertsClientToValidateService(
+  user: any,
+  limit: number,
+  offset: number
+) {
+  if (!user?.agence_id) {
+    throw new Error('Agence utilisateur manquante');
+  }
+
+  // 🔥 sécurité métier
+  if (!['ADMIN', 'N+1', 'N+2'].includes(user.role_name)) {
+    throw new Error('Accès refusé');
+  }
+
+  return await getTransfertsClientToValidate(
+    user.agence_id,
+    limit,
+    offset
+  );
+}
+
+export async function getTransfertsClientToWithdrawService(
+  user: any,
+  limit: number,
+  offset: number
+) {
+  if (!user?.agence_id) {
+    throw new Error('Agence utilisateur manquante');
+  }
+
+  // 🔐 seuls ceux qui peuvent faire retrait
+  if (!['CAISSIER', 'ADMIN', 'N+1', 'N+2'].includes(user.role_name)) {
+    throw new Error('Accès refusé');
+  }
+
+  return await getTransfertsClientToWithdraw(
+    user.agence_id,
+    limit,
+    offset
+  );
 }

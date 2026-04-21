@@ -48,6 +48,38 @@ export async function getAllCaisses(limit: number, offset: number) {
   return { data, total };
 }
 
+export async function getCaissesByAgent(agent_id: string) {
+  return await query(
+    `SELECT * FROM caisse
+     WHERE agent_id = $1 AND is_activated = true`,
+    [agent_id]
+  );
+}
+
+export async function getCaissesByAgencePaginated(
+  agence_id: string,
+  limit: number,
+  offset: number
+) {
+  const data = await query(
+    `SELECT * FROM caisse
+     WHERE agence_id = $1 AND is_activated = true
+     ORDER BY created_at DESC
+     LIMIT $2 OFFSET $3`,
+    [agence_id, limit, offset]
+  );
+
+  const totalRes = await query(
+    `SELECT COUNT(*) FROM caisse WHERE agence_id = $1 AND is_activated = true`,
+    [agence_id]
+  );
+
+  return {
+    data,
+    total: Number(totalRes[0].count)
+  };
+}
+
 export async function getCaisseById(id: string) {
   const result = await query(
     `SELECT 

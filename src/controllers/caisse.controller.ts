@@ -12,6 +12,7 @@ import {
 
 import { paginatedResponse } from '../utils/pagination.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
+import type { AuthRequest } from '../middlewares/auth.middleware.js';
 
 export const createCaisse: RequestHandler = async (req, res) => {
   try {
@@ -23,17 +24,29 @@ export const createCaisse: RequestHandler = async (req, res) => {
   }
 };
 
-export const getCaisses: RequestHandler = async (req, res) => {
+export const getCaisses: RequestHandler = async (req: AuthRequest, res) => {
   try {
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(100, Number(req.query.limit) || 10);
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json(errorResponse('Non authentifié'));
+    }
+
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit as string) || 10);
     const offset = (page - 1) * limit;
 
-    const { data, total } = await getCaissesService(page, limit, offset);
+    const { data, total } = await getCaissesService(
+      user,
+      page,
+      limit,
+      offset
+    );
 
     res.json(paginatedResponse(data, total, page, limit));
+
   } catch (error: any) {
-    res.status(500).json(errorResponse(error.message));
+    res.status(400).json(errorResponse(error.message));
   }
 };
 

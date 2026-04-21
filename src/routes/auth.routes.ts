@@ -24,7 +24,7 @@ const router = Router();
  *       200:
  *         description: Liste des utilisateurs
  */
-router.get('/', authMiddleware, roleGuard(['ADMIN']), getAllUsersController);
+router.get('/', authMiddleware, roleGuard(['ADMIN','N+1', 'N+2']), getAllUsersController);
 
 /**
  * @swagger

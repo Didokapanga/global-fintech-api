@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { retrait } from '../controllers/retrait.controller.js';
+import { getMyRetraits, retrait } from '../controllers/retrait.controller.js';
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { roleGuard } from '../middlewares/role.middleware.js';
 
@@ -75,6 +75,30 @@ router.post(
   authMiddleware,
   roleGuard(['CAISSIER', 'ADMIN']),
   retrait
+);
+
+/**
+ * @swagger
+ * /api/retraits/me:
+ *   get:
+ *     summary: Historique des retraits de l'utilisateur connecté
+ *     tags: [Retrait]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Liste des retraits
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               data: []
+ */
+router.get(
+  '/me',
+  authMiddleware,
+  roleGuard(['CAISSIER', 'ADMIN']),
+  getMyRetraits
 );
 
 export default router;
