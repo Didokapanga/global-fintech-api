@@ -113,18 +113,49 @@ export async function openCaisseService(id: string, user: any, meta?: any) {
   return updated;
 }
 
-export async function closeCaisseService(id: string, user: any, meta?: any) {
+export async function closeCaisseService(
+  id: string,
+  user: any,
+  meta?: any
+) {
   const caisse = await getCaisseById(id);
 
   if (!caisse) {
     throw new Error('Caisse not found');
   }
 
-  if (
-    caisse.agent_id !== user.id &&
-    user.role_name?.toUpperCase() !== 'ADMIN'
-  ) {
-    throw new Error('Vous ne pouvez pas fermer cette caisse');
+  const role = user.role_name?.toUpperCase();
+
+  /**
+   * =================================
+   * CAISSE CAISSIER
+   * =================================
+   */
+  if (caisse.agent_id) {
+    if (
+      caisse.agent_id !== user.id &&
+      role !== 'ADMIN'
+    ) {
+      throw new Error(
+        'Vous ne pouvez pas fermer cette caisse'
+      );
+    }
+  }
+
+  /**
+   * =================================
+   * CAISSE AGENCE
+   * =================================
+   */
+  if (!caisse.agent_id) {
+    if (
+      caisse.agence_id !== user.agence_id ||
+      !['ADMIN', 'N+1', 'N+2'].includes(role)
+    ) {
+      throw new Error(
+        'Vous ne pouvez pas fermer cette caisse agence'
+      );
+    }
   }
 
   if (caisse.state === 'FERMEE') {
@@ -137,15 +168,22 @@ export async function closeCaisseService(id: string, user: any, meta?: any) {
 
   const oldState = caisse.state;
 
-  const updated = await updateCaisseState(id, 'FERMEE');
+  const updated = await updateCaisseState(
+    id,
+    'FERMEE'
+  );
 
   await logAudit({
     user_id: user.id,
     action: 'CLOSE',
     table_name: 'caisse',
     code_reference: id,
-    old_data: { state: oldState },
-    new_data: { state: 'FERMEE' },
+    old_data: {
+      state: oldState
+    },
+    new_data: {
+      state: 'FERMEE'
+    },
     ip_address: meta?.ip,
     user_agent: meta?.user_agent
   });

@@ -215,7 +215,7 @@ router.post(
 router.get(
   '/me',
   authMiddleware,
-  roleGuard(['CAISSIER', 'ADMIN']),
+  roleGuard(['CAISSIER', 'ADMIN', 'N+1', 'N+2']),
   getMyRetraits
 );
 
