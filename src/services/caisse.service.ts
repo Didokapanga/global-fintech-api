@@ -9,6 +9,7 @@ import {
   updateCaisse,
   updateCaisseState
 } from '../repositories/caisse.repository.js';
+import { logAudit } from '../utils/auditLogger.js';
 
 export async function createCaisseService(data: any) {
   if (!data.agence_id || !data.type || !data.devise || !data.code_caisse) {
@@ -71,11 +72,18 @@ export async function getCaissesByAgenceService(agence_id: string) {
   return await getCaissesByAgence(agence_id);
 }
 
-export async function openCaisseService(id: string) {
+export async function openCaisseService(id: string, user: any, meta?: any) {
   const caisse = await getCaisseById(id);
 
   if (!caisse) {
     throw new Error('Caisse not found');
+  }
+
+  if (
+    caisse.agent_id !== user.id &&
+    user.role_name?.toUpperCase() !== 'ADMIN'
+  ) {
+    throw new Error('Vous ne pouvez pas ouvrir cette caisse');
   }
 
   if (caisse.state === 'OUVERTE') {
@@ -86,16 +94,37 @@ export async function openCaisseService(id: string) {
     throw new Error('Caisse clôturée');
   }
 
+  const oldState = caisse.state;
+
   const updated = await updateCaisseState(id, 'OUVERTE');
+
+  // 🔐 AUDIT
+  await logAudit({
+    user_id: user.id,
+    action: 'OPEN',
+    table_name: 'caisse',
+    code_reference: id,
+    old_data: { state: oldState },
+    new_data: { state: 'OUVERTE' },
+    ip_address: meta?.ip,
+    user_agent: meta?.user_agent
+  });
 
   return updated;
 }
 
-export async function closeCaisseService(id: string) {
+export async function closeCaisseService(id: string, user: any, meta?: any) {
   const caisse = await getCaisseById(id);
 
   if (!caisse) {
     throw new Error('Caisse not found');
+  }
+
+  if (
+    caisse.agent_id !== user.id &&
+    user.role_name?.toUpperCase() !== 'ADMIN'
+  ) {
+    throw new Error('Vous ne pouvez pas fermer cette caisse');
   }
 
   if (caisse.state === 'FERMEE') {
@@ -106,31 +135,74 @@ export async function closeCaisseService(id: string) {
     throw new Error('Caisse clôturée');
   }
 
+  const oldState = caisse.state;
+
   const updated = await updateCaisseState(id, 'FERMEE');
+
+  await logAudit({
+    user_id: user.id,
+    action: 'CLOSE',
+    table_name: 'caisse',
+    code_reference: id,
+    old_data: { state: oldState },
+    new_data: { state: 'FERMEE' },
+    ip_address: meta?.ip,
+    user_agent: meta?.user_agent
+  });
 
   return updated;
 }
 
-export async function updateCaisseService(id: string, data: any) {
-  if (!data.agence_id || !data.type || !data.devise || !data.code_caisse) {
-    throw new Error('Missing required fields');
+export async function updateCaisseService(id: string, data: any, user: any, meta?: any) {
+  const oldCaisse = await getCaisseById(id);
+
+  if (!oldCaisse) {
+    throw new Error('Caisse not found');
   }
 
-  const caisse = await updateCaisse(id, data);
+  const updated = await updateCaisse(id, data);
 
-  if (!caisse) {
+  if (!updated) {
     throw new Error('Caisse not found or inactive');
   }
 
-  return caisse;
+  await logAudit({
+    user_id: user.id,
+    action: 'UPDATE',
+    table_name: 'caisse',
+    code_reference: id,
+    old_data: oldCaisse,
+    new_data: updated,
+    ip_address: meta?.ip,
+    user_agent: meta?.user_agent
+  });
+
+  return updated;
 }
 
-export async function deleteCaisseService(id: string) {
-  const caisse = await softDeleteCaisse(id);
+export async function deleteCaisseService(id: string, user: any, meta?: any) {
+  const caisse = await getCaisseById(id);
 
   if (!caisse) {
     throw new Error('Caisse not found');
   }
+
+  const deleted = await softDeleteCaisse(id);
+
+  if (!deleted) {
+    throw new Error('Caisse not found');
+  }
+
+  await logAudit({
+    user_id: user.id,
+    action: 'DELETE',
+    table_name: 'caisse',
+    code_reference: id,
+    old_data: caisse,
+    new_data: { is_active: false },
+    ip_address: meta?.ip,
+    user_agent: meta?.user_agent
+  });
 
   return { message: 'Caisse désactivée avec succès' };
 }

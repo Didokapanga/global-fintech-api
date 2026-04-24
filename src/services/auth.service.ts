@@ -52,6 +52,7 @@ export async function loginService(user_name: string, password: string) {
     role_id: user.role_id,
     role_name: user.role_name,
     agence_id: user.agence_id,
+    agence_name: user.agence_name,
   },
   JWT_SECRET,
   { expiresIn: '1d' }

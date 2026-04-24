@@ -12,6 +12,7 @@ import retraitRoutes from './routes/retrait.routes.js';
 import validationRoutes from './routes/validation.routes.js';
 import clotureRoutes from './routes/clotureCaisse.routes.js';
 import clotureValidationRoutes from './routes/clotureValidation.routes.js'
+import ledgerRoutes from './routes/ledger.routes.js';
 
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './configs/swagger.js';
@@ -34,5 +35,6 @@ app.use('/api/retraits', retraitRoutes);
 app.use('/api/validations', validationRoutes);
 app.use('/api/clotures', clotureRoutes);
 app.use('/api/clotures', clotureValidationRoutes);
+app.use('/api/ledger', ledgerRoutes);
 
 export default app;

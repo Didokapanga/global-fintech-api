@@ -14,16 +14,21 @@ import { paginatedResponse } from '../utils/pagination.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 import type { AuthRequest } from '../middlewares/auth.middleware.js';
 
+// ==========================
+// CREATE
+// ==========================
 export const createCaisse: RequestHandler = async (req, res) => {
   try {
     const caisse = await createCaisseService(req.body);
-
     res.json(successResponse('Caisse créée avec succès', caisse));
   } catch (error: any) {
     res.status(400).json(errorResponse(error.message));
   }
 };
 
+// ==========================
+// GET ALL
+// ==========================
 export const getCaisses: RequestHandler = async (req: AuthRequest, res) => {
   try {
     const user = req.user;
@@ -50,6 +55,9 @@ export const getCaisses: RequestHandler = async (req: AuthRequest, res) => {
   }
 };
 
+// ==========================
+// GET ONE
+// ==========================
 export const getCaisse: RequestHandler = async (req, res) => {
   try {
     const id = req.params.id as string;
@@ -62,30 +70,59 @@ export const getCaisse: RequestHandler = async (req, res) => {
   }
 };
 
-export const openCaisse: RequestHandler = async (req, res) => {
+// ==========================
+// OPEN CAISSE (FIX + AUDIT)
+// ==========================
+export const openCaisse: RequestHandler = async (req: AuthRequest, res) => {
   try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json(errorResponse('Non authentifié'));
+    }
+
     const id = req.params.id as string;
 
-    const caisse = await openCaisseService(id);
+    const caisse = await openCaisseService(id, user, {
+      ip: req.ip,
+      user_agent: req.headers['user-agent']
+    });
 
     res.json(successResponse('Caisse ouverte avec succès', caisse));
+
   } catch (error: any) {
     res.status(400).json(errorResponse(error.message));
   }
 };
 
-export const closeCaisse: RequestHandler = async (req, res) => {
+// ==========================
+// CLOSE CAISSE (FIX + AUDIT)
+// ==========================
+export const closeCaisse: RequestHandler = async (req: AuthRequest, res) => {
   try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json(errorResponse('Non authentifié'));
+    }
+
     const id = req.params.id as string;
 
-    const caisse = await closeCaisseService(id);
+    const caisse = await closeCaisseService(id, user, {
+      ip: req.ip,
+      user_agent: req.headers['user-agent']
+    });
 
     res.json(successResponse('Caisse fermée avec succès', caisse));
+
   } catch (error: any) {
     res.status(400).json(errorResponse(error.message));
   }
 };
 
+// ==========================
+// GET BY AGENCE
+// ==========================
 export const getCaissesByAgence: RequestHandler = async (req, res) => {
   try {
     const agence_id = req.params.agence_id as string;
@@ -99,25 +136,60 @@ export const getCaissesByAgence: RequestHandler = async (req, res) => {
   }
 };
 
-export const updateCaisse: RequestHandler = async (req, res) => {
+// ==========================
+// UPDATE (FIX + AUDIT)
+// ==========================
+export const updateCaisse: RequestHandler = async (req: AuthRequest, res) => {
   try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json(errorResponse('Non authentifié'));
+    }
+
     const id = req.params.id as string;
 
-    const caisse = await updateCaisseService(id, req.body);
+    const caisse = await updateCaisseService(
+      id,
+      req.body,
+      user,
+      {
+        ip: req.ip,
+        user_agent: req.headers['user-agent']
+      }
+    );
 
     res.json(successResponse('Caisse mise à jour', caisse));
+
   } catch (error: any) {
     res.status(400).json(errorResponse(error.message));
   }
 };
 
-export const deleteCaisse: RequestHandler = async (req, res) => {
+// ==========================
+// DELETE (FIX + AUDIT)
+// ==========================
+export const deleteCaisse: RequestHandler = async (req: AuthRequest, res) => {
   try {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json(errorResponse('Non authentifié'));
+    }
+
     const id = req.params.id as string;
 
-    await deleteCaisseService(id);
+    await deleteCaisseService(
+      id,
+      user,
+      {
+        ip: req.ip,
+        user_agent: req.headers['user-agent']
+      }
+    );
 
     res.json(successResponse('Caisse désactivée'));
+
   } catch (error: any) {
     res.status(400).json(errorResponse(error.message));
   }

@@ -18,6 +18,8 @@ export const validateOperation = async (req: AuthRequest, res: Response) => {
       // 🔐 sécurisé
       validated_by: user.id,
 
+      user, // 🔥 OBLIGATOIRE
+
       // 🌐 audit
       ip: req.ip,
       user_agent: req.headers['user-agent']

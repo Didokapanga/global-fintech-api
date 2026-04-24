@@ -83,10 +83,25 @@ export async function findUserById(id: string) {
 export async function findUserByUserName(user_name: string) {
   const users = await query(
     `SELECT 
-        u.*,
-        r.role_name
+        u.id,
+        u.user_name,
+        u.phone,
+        u.email,
+        u.hash_password,
+        u.is_activated,
+        u.created_at,
+
+        r.id as role_id,
+        r.role_name,
+
+        a.id as agence_id,
+        a.libelle as agence_name,
+        a.code_agence,
+        a.ville
+
      FROM "user" u
      LEFT JOIN role r ON u.role_id = r.id
+     LEFT JOIN agence a ON u.agence_id = a.id
      WHERE u.user_name = $1
      LIMIT 1`,
     [user_name]

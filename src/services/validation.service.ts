@@ -16,7 +16,8 @@ export async function validateOperationService(data: any) {
       validated_by,
       commentaire,
       ip,
-      user_agent
+      user_agent,
+      user
     } = data;
 
     const tableMap: any = {
@@ -28,7 +29,6 @@ export async function validateOperationService(data: any) {
     const table = tableMap[operation_type];
     if (!table) throw new Error('Type opération invalide');
 
-    // 🔒 LOCK opération
     const res = await client.query(
       `SELECT * FROM ${table} WHERE id = $1 FOR UPDATE`,
       [reference_id]
@@ -46,9 +46,8 @@ export async function validateOperationService(data: any) {
     let newStatus = oldStatus;
 
     // =====================================================
-    // 🔥 LOGIQUE MÉTIER
+    // 🔥 APPROUVE
     // =====================================================
-
     if (decision === 'APPROUVE') {
 
       // =========================
@@ -56,13 +55,11 @@ export async function validateOperationService(data: any) {
       // =========================
       if (operation_type === 'TRANSFERT_CLIENT') {
 
-        // ❌ interdiction auto-validation
         if (operation.created_by === validated_by) {
           throw new Error('Un agent ne peut pas valider son propre transfert');
         }
 
-        // 🔐 sécurité rôle (optionnel mais recommandé)
-        if (!['ADMIN', 'N+1', 'N+2'].includes(user_agent.role_name)) {
+        if (!['ADMIN', 'N+1', 'N+2'].includes(user.role_name)) {
           throw new Error('Accès refusé');
         }
 
@@ -74,56 +71,62 @@ export async function validateOperationService(data: any) {
       }
 
       // =========================
-      // 🔵 TRANSFERT CAISSE (DOUBLE VALIDATION)
+      // 🔵 TRANSFERT CAISSE
       // =========================
       if (operation_type === 'TRANSFERT_CAISSE') {
 
-        // 🔍 récupérer agents des caisses
         const sourceRes = await client.query(
-          `SELECT agent_id FROM caisse WHERE id = $1`,
+          `SELECT agent_id, agence_id FROM caisse WHERE id = $1`,
           [operation.caisse_source_id]
         );
 
         const destRes = await client.query(
-          `SELECT agent_id FROM caisse WHERE id = $1`,
+          `SELECT agent_id, agence_id FROM caisse WHERE id = $1`,
           [operation.caisse_destination_id]
         );
 
-        const sourceAgent = sourceRes.rows[0]?.agent_id;
-        const destAgent = destRes.rows[0]?.agent_id;
+        const source = sourceRes.rows[0];
+        const dest = destRes.rows[0];
 
-        if (!sourceAgent || !destAgent) {
-          throw new Error('Agents de caisse introuvables');
+        if (!source || !dest) {
+          throw new Error('Caisse introuvable');
         }
 
-        // ❌ sécurité : même agent interdit
-        if (sourceAgent === destAgent) {
-          throw new Error('Même agent interdit pour double validation');
-        }
-
-        // 🔥 N1 → SOURCE
+        // 🔥 N1
         if (niveau === 'N1') {
 
-          if (validated_by !== sourceAgent) {
-            throw new Error('Seul le caissier source peut valider N1');
+          if (source.agent_id) {
+            if (validated_by !== source.agent_id) {
+              throw new Error('Seul le propriétaire source peut valider');
+            }
+          } else {
+            if (user.agence_id !== source.agence_id) {
+              throw new Error('Validation interdite hors agence');
+            }
           }
 
           if (oldStatus !== 'INITIE') {
-            throw new Error('Déjà validé au niveau 1');
+            throw new Error('Déjà validé N1');
           }
 
           newStatus = 'VALIDE';
         }
 
-        // 🔥 N2 → DESTINATION
+        // 🔥 N2
         if (niveau === 'N2') {
 
-          if (validated_by !== destAgent) {
-            throw new Error('Seul le caissier destination peut valider N2');
+          if (dest.agent_id) {
+            if (validated_by !== dest.agent_id) {
+              throw new Error('Seul le propriétaire destination peut valider');
+            }
+          } else {
+            if (user.agence_id !== dest.agence_id) {
+              throw new Error('Validation interdite hors agence');
+            }
           }
 
           if (oldStatus !== 'VALIDE') {
-            throw new Error('Validation N1 requise avant N2');
+            throw new Error('Validation N1 requise');
           }
 
           newStatus = 'EXECUTE';
@@ -131,36 +134,32 @@ export async function validateOperationService(data: any) {
       }
     }
 
-    // =========================
+    // =====================================================
     // ❌ REJET
-    // =========================
+    // =====================================================
     if (decision === 'REJETE') {
       newStatus = 'REJETE';
     }
 
     // =====================================================
-    // 🔄 UPDATE STATUT
+    // 🔄 UPDATE
     // =====================================================
     await client.query(
-      `UPDATE ${table}
-       SET statut = $1
-       WHERE id = $2`,
+      `UPDATE ${table} SET statut = $1 WHERE id = $2`,
       [newStatus, reference_id]
     );
 
     // =====================================================
-    // 💰 EXECUTION (TRANSFERT CAISSE UNIQUEMENT)
+    // 💰 EXECUTION
     // =====================================================
     if (newStatus === 'EXECUTE' && operation_type === 'TRANSFERT_CAISSE') {
       const montant = Number(operation.montant);
 
-      // 🔻 débit source
       await client.query(
         `UPDATE caisse SET solde = solde - $1 WHERE id = $2`,
         [montant, operation.caisse_source_id]
       );
 
-      // 🔺 crédit destination
       await client.query(
         `UPDATE caisse SET solde = solde + $1 WHERE id = $2`,
         [montant, operation.caisse_destination_id]
@@ -168,7 +167,7 @@ export async function validateOperationService(data: any) {
     }
 
     // =====================================================
-    // 📝 LOG VALIDATION
+    // 📝 LOG
     // =====================================================
     await createValidationLog({
       operation_type,
@@ -183,9 +182,6 @@ export async function validateOperationService(data: any) {
 
     await client.query('COMMIT');
 
-    // =====================================================
-    // 🔐 AUDIT
-    // =====================================================
     await logAudit({
       user_id: validated_by,
       action: 'VALIDATE',
@@ -205,7 +201,6 @@ export async function validateOperationService(data: any) {
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
-
   } finally {
     client.release();
   }

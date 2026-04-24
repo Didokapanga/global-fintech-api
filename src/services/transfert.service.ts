@@ -1,12 +1,21 @@
 import { db } from '../database/connection.js';
 import { logAudit } from '../utils/auditLogger.js';
+
 import {
   getAllTransferts,
+  getAllTransfertsToProcess,
   getTransfertsByAgence,
   getTransfertsByAgent,
-  getTransfertsCaisseToProcess
+  getTransfertsByCaissier,
+  getTransfertsCaisseToProcess,
+  getTransfertsCaisseToProcessByCaisses
 } from '../repositories/transfert.repository.js';
 
+/**
+ * =========================================
+ * 🔥 CREATE TRANSFERT CAISSE
+ * =========================================
+ */
 export async function transfertCaisseService(data: any) {
   const client = await db.connect();
 
@@ -18,11 +27,15 @@ export async function transfertCaisseService(data: any) {
       caisse_destination_id,
       montant,
       devise,
+      date_operation,
       created_by,
       ip,
       user_agent
     } = data;
 
+    // =========================
+    // VALIDATION
+    // =========================
     if (!caisse_source_id || !caisse_destination_id || montant <= 0) {
       throw new Error('Invalid data');
     }
@@ -31,7 +44,9 @@ export async function transfertCaisseService(data: any) {
       throw new Error('Même caisse interdite');
     }
 
-    // 🔒 lock
+    // =========================
+    // LOCK DES CAISSES
+    // =========================
     const sourceRes = await client.query(
       `SELECT * FROM caisse WHERE id = $1 FOR UPDATE`,
       [caisse_source_id]
@@ -57,20 +72,43 @@ export async function transfertCaisseService(data: any) {
       throw new Error('Solde insuffisant');
     }
 
-    // 💾 INSERT SEULEMENT 🔥
+    // =========================
+    // INSERT
+    // =========================
     const transfertRes = await client.query(
-      `INSERT INTO transfert_caisse
-      (caisse_source_id, caisse_destination_id, montant, devise, created_by, statut)
-      VALUES ($1,$2,$3,$4,$5,'INITIE')
-      RETURNING *`,
-      [caisse_source_id, caisse_destination_id, montant, devise, created_by]
+      `
+      INSERT INTO transfert_caisse
+      (
+        caisse_source_id,
+        caisse_destination_id,
+        montant,
+        devise,
+        date_operation,
+        created_by,
+        statut
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,'INITIE'
+      )
+      RETURNING *
+      `,
+      [
+        caisse_source_id,
+        caisse_destination_id,
+        montant,
+        devise,
+        date_operation || new Date(),
+        created_by
+      ]
     );
 
     const transfert = transfertRes.rows[0];
 
     await client.query('COMMIT');
 
-    // 🔐 audit AFTER COMMIT
+    // =========================
+    // AUDIT APRÈS COMMIT
+    // =========================
     await logAudit({
       user_id: created_by,
       action: 'CREATE',
@@ -92,49 +130,143 @@ export async function transfertCaisseService(data: any) {
   }
 }
 
-// 🔍 BY ID sécurisé
+/**
+ * =========================================
+ * 🔍 GET TRANSFERTS (sécurisé par rôle)
+ * =========================================
+ */
 export async function getTransfertsService(
   user: any,
   limit: number,
-  offset: number
+  offset: number,
+  filters: {
+    devise?: string;
+    statut?: string;
+    date_operation?: string;
+  }
 ) {
   const role = user.role_name?.toUpperCase();
   const agenceId = user.agence_id;
 
   // 🔴 ADMIN → tout
   if (role === 'ADMIN') {
-    return await getAllTransferts(limit, offset);
+    return await getAllTransferts(
+      limit,
+      offset,
+      filters
+    );
   }
 
   // 🟡 N+1 / N+2 → agence
-  if (['N+1', 'N+2'].includes(role)) {
-    return await getTransfertsByAgence(agenceId, limit, offset);
+  if (role === 'N+1' || role === 'N+2') {
+    if (!agenceId) {
+      throw new Error('Agence utilisateur manquante');
+    }
+
+    return await getTransfertsByAgence(
+      agenceId,
+      limit,
+      offset,
+      filters
+    );
   }
 
-  // 🟢 CAISSIER → 🔥 SES PROPRES TRANSFERTS
+  // 🟢 CAISSIER → ses transferts liés à ses caisses
   if (role === 'CAISSIER') {
-    return await getTransfertsByAgent(user.id, limit, offset);
+    return await getTransfertsByCaissier(
+      user.id,
+      limit,
+      offset,
+      filters
+    );
   }
 
   throw new Error('Accès refusé');
 }
 
+/**
+ * =========================================
+ * 🔍 GET MES TRANSFERTS (created_by)
+ * =========================================
+ */
+export async function getMyTransfertsService(
+  user: any,
+  limit: number,
+  offset: number,
+  filters: {
+    devise?: string;
+    statut?: string;
+    date_operation?: string;
+  }
+) {
+  if (!user?.id) {
+    throw new Error('Utilisateur non authentifié');
+  }
+
+  return await getTransfertsByAgent(
+    user.id,
+    limit,
+    offset,
+    filters
+  );
+}
+
+/**
+ * =========================================
+ * 🔥 GET TRANSFERTS À TRAITER
+ * INITIE + VALIDE
+ * =========================================
+ */
 export async function getTransfertsCaisseToProcessService(
   user: any,
   limit: number,
   offset: number
 ) {
-  if (!user?.agence_id) {
-    throw new Error('Agence utilisateur manquante');
+  if (!user?.id) {
+    throw new Error('Utilisateur non authentifié');
   }
 
-  // 🔐 sécurité métier
-  if (!['ADMIN', 'N+1', 'N+2'].includes(user.role_name)) {
-    throw new Error('Accès refusé');
+  const role = user.role_name?.toUpperCase();
+
+  // 🔴 ADMIN → tout
+  if (role === 'ADMIN') {
+    return await getAllTransfertsToProcess(
+      limit,
+      offset
+    );
   }
 
-  return await getTransfertsCaisseToProcess(
-    user.agence_id,
+  // 🟡 N+1 / N+2 → agence
+  if (role === 'N+1' || role === 'N+2') {
+    if (!user.agence_id) {
+      throw new Error('Agence utilisateur manquante');
+    }
+
+    return await getTransfertsCaisseToProcess(
+      user.agence_id,
+      limit,
+      offset
+    );
+  }
+
+  // 🟢 CAISSIER → seulement ses caisses
+  const caisseRes = await db.query(
+    `SELECT id FROM caisse WHERE agent_id = $1`,
+    [user.id]
+  );
+
+  const caisseIds = caisseRes.rows.map(c => c.id);
+
+  // 🔥 important : pas de throw ici
+  if (caisseIds.length === 0) {
+    return {
+      data: [],
+      total: 0
+    };
+  }
+
+  return await getTransfertsCaisseToProcessByCaisses(
+    caisseIds,
     limit,
     offset
   );
