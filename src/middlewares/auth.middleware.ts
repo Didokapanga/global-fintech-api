@@ -1,54 +1,109 @@
 import jwt from 'jsonwebtoken';
-import type { Request, Response, NextFunction } from 'express';
+import type {
+  Request,
+  Response,
+  NextFunction
+} from 'express';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_key';
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  'dev_secret_key';
 
-export interface AuthRequest extends Request {
-  user?: any;
+/**
+ * =========================================
+ * AUTH REQUEST
+ * =========================================
+ */
+export interface AuthRequest
+  extends Request {
+  user?: {
+    id: string;
+    role_id: string;
+    role_name: string;
+    agence_id: string;
+  };
 }
 
+/**
+ * =========================================
+ * AUTH MIDDLEWARE
+ * =========================================
+ */
 export function authMiddleware(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
   try {
-    const authHeader = req.headers.authorization;
+    /**
+     * Authorization header
+     */
+    const authHeader =
+      req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (
+      !authHeader ||
+      !authHeader.startsWith(
+        'Bearer '
+      )
+    ) {
       return res.status(401).json({
         success: false,
-        message: 'Token manquant'
+        message:
+          'Token manquant'
       });
     }
 
-    const token = authHeader.split(' ')[1];
+    /**
+     * Bearer token
+     */
+    const token =
+      authHeader.split(' ')[1];
 
-    // 🔥 FIX CRITIQUE
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: 'Token invalide'
+        message:
+          'Token invalide'
       });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    console.log('DECODED =>', decoded);
+    /**
+     * Verify JWT
+     */
+    const decoded =
+      jwt.verify(
+        token,
+        JWT_SECRET
+      ) as {
+        id: string;
+        role_id: string;
+        role_name: string;
+        agence_id: string;
+      };
 
+    /**
+     * Inject user
+     */
     req.user = {
       id: decoded.id,
-      role_id: decoded.role_id,
-      role_name: decoded.role_name,
-      agence_id: decoded.agence_id
+      role_id:
+        decoded.role_id,
+      role_name:
+        decoded.role_name,
+      agence_id:
+        decoded.agence_id
     };
-    console.log('REQ.USER =>', req.user);
 
-    next();
+    return next();
 
-  } catch (err) {
+  } catch (
+    err: unknown
+  ) {
     return res.status(401).json({
       success: false,
-      message: 'Token invalide ou expiré'
+      message:
+        'Token invalide ou expiré'
     });
   }
 }

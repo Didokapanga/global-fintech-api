@@ -16,11 +16,16 @@ import {
  * 🔥 CREATE TRANSFERT CAISSE
  * =========================================
  */
-export async function transfertCaisseService(data: any) {
-  const client = await db.connect();
+export async function transfertCaisseService(
+  data: any
+) {
+  const client =
+    await db.connect();
 
   try {
-    await client.query('BEGIN');
+    await client.query(
+      'BEGIN'
+    );
 
     const {
       caisse_source_id,
@@ -33,96 +38,159 @@ export async function transfertCaisseService(data: any) {
       user_agent
     } = data;
 
-    // =========================
-    // VALIDATION
-    // =========================
-    if (!caisse_source_id || !caisse_destination_id || montant <= 0) {
-      throw new Error('Invalid data');
+    /**
+     * =========================
+     * VALIDATION
+     * =========================
+     */
+    if (
+      !caisse_source_id ||
+      !caisse_destination_id ||
+      montant <= 0
+    ) {
+      throw new Error(
+        'Invalid data'
+      );
     }
 
-    if (caisse_source_id === caisse_destination_id) {
-      throw new Error('Même caisse interdite');
+    if (
+      caisse_source_id ===
+      caisse_destination_id
+    ) {
+      throw new Error(
+        'Même caisse interdite'
+      );
     }
 
-    // =========================
-    // LOCK DES CAISSES
-    // =========================
-    const sourceRes = await client.query(
-      `SELECT * FROM caisse WHERE id = $1 FOR UPDATE`,
-      [caisse_source_id]
-    );
+    /**
+     * =========================
+     * LOCK DES CAISSES
+     * =========================
+     */
+    const sourceRes =
+      await client.query(
+        `
+        SELECT *
+        FROM caisse
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [caisse_source_id]
+      );
 
-    const destRes = await client.query(
-      `SELECT * FROM caisse WHERE id = $1 FOR UPDATE`,
-      [caisse_destination_id]
-    );
+    const destRes =
+      await client.query(
+        `
+        SELECT *
+        FROM caisse
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [caisse_destination_id]
+      );
 
-    const source = sourceRes.rows[0];
-    const dest = destRes.rows[0];
+    const source =
+      sourceRes.rows[0];
+
+    const dest =
+      destRes.rows[0];
 
     if (!source || !dest) {
-      throw new Error('Caisse introuvable');
+      throw new Error(
+        'Caisse introuvable'
+      );
     }
 
-    if (source.state !== 'OUVERTE' || dest.state !== 'OUVERTE') {
-      throw new Error('Caisse non ouverte');
+    if (
+      source.state !==
+        'OUVERTE' ||
+      dest.state !==
+        'OUVERTE'
+    ) {
+      throw new Error(
+        'Caisse non ouverte'
+      );
     }
 
-    if (source.solde < montant) {
-      throw new Error('Solde insuffisant');
+    if (
+      source.solde <
+      montant
+    ) {
+      throw new Error(
+        'Solde insuffisant'
+      );
     }
 
-    // =========================
-    // INSERT
-    // =========================
-    const transfertRes = await client.query(
-      `
-      INSERT INTO transfert_caisse
-      (
-        caisse_source_id,
-        caisse_destination_id,
-        montant,
-        devise,
-        date_operation,
-        created_by,
-        statut
-      )
-      VALUES (
-        $1,$2,$3,$4,$5,$6,'INITIE'
-      )
-      RETURNING *
-      `,
-      [
-        caisse_source_id,
-        caisse_destination_id,
-        montant,
-        devise,
-        date_operation || new Date(),
-        created_by
-      ]
+    /**
+     * =========================
+     * INSERT
+     * =========================
+     */
+    const transfertRes =
+      await client.query(
+        `
+        INSERT INTO transfert_caisse
+        (
+          caisse_source_id,
+          caisse_destination_id,
+          montant,
+          devise,
+          date_operation,
+          created_by,
+          statut
+        )
+        VALUES
+        (
+          $1,$2,$3,$4,$5,$6,'INITIE'
+        )
+        RETURNING *
+        `,
+        [
+          caisse_source_id,
+          caisse_destination_id,
+          montant,
+          devise,
+          date_operation ||
+            new Date(),
+          created_by
+        ]
+      );
+
+    const transfert =
+      transfertRes.rows[0];
+
+    await client.query(
+      'COMMIT'
     );
 
-    const transfert = transfertRes.rows[0];
-
-    await client.query('COMMIT');
-
-    // =========================
-    // AUDIT APRÈS COMMIT
-    // =========================
+    /**
+     * =========================
+     * AUDIT APRÈS COMMIT
+     * =========================
+     */
     await logAudit({
-      user_id: created_by,
+      user_id:
+        created_by,
       action: 'CREATE',
-      table_name: 'transfert_caisse',
-      code_reference: transfert.id,
-      new_data: transfert,
+      table_name:
+        'transfert_caisse',
+      code_reference:
+        transfert.id,
+      new_data:
+        transfert,
       ip_address: ip,
       user_agent
     });
 
     return transfert;
 
-  } catch (error) {
-    await client.query('ROLLBACK');
+  } catch (
+    error: unknown
+  ) {
+    await client.query(
+      'ROLLBACK'
+    );
+
     throw error;
 
   } finally {
@@ -132,7 +200,8 @@ export async function transfertCaisseService(data: any) {
 
 /**
  * =========================================
- * 🔍 GET TRANSFERTS (sécurisé par rôle)
+ * 🔍 GET TRANSFERTS
+ * sécurisé par rôle
  * =========================================
  */
 export async function getTransfertsService(
@@ -145,10 +214,15 @@ export async function getTransfertsService(
     date_operation?: string;
   }
 ) {
-  const role = user.role_name?.toUpperCase();
-  const agenceId = user.agence_id;
+  const role =
+    user.role_name?.toUpperCase();
 
-  // 🔴 ADMIN → tout
+  const agenceId =
+    user.agence_id;
+
+  /**
+   * 🔴 ADMIN → tout
+   */
   if (role === 'ADMIN') {
     return await getAllTransferts(
       limit,
@@ -157,10 +231,17 @@ export async function getTransfertsService(
     );
   }
 
-  // 🟡 N+1 / N+2 → agence
-  if (role === 'N+1' || role === 'N+2') {
+  /**
+   * 🟡 N+1 / N+2 → agence
+   */
+  if (
+    role === 'N+1' ||
+    role === 'N+2'
+  ) {
     if (!agenceId) {
-      throw new Error('Agence utilisateur manquante');
+      throw new Error(
+        'Agence utilisateur manquante'
+      );
     }
 
     return await getTransfertsByAgence(
@@ -171,8 +252,12 @@ export async function getTransfertsService(
     );
   }
 
-  // 🟢 CAISSIER → ses transferts liés à ses caisses
-  if (role === 'CAISSIER') {
+  /**
+   * 🟢 CAISSIER
+   */
+  if (
+    role === 'CAISSIER'
+  ) {
     return await getTransfertsByCaissier(
       user.id,
       limit,
@@ -181,12 +266,15 @@ export async function getTransfertsService(
     );
   }
 
-  throw new Error('Accès refusé');
+  throw new Error(
+    'Accès refusé'
+  );
 }
 
 /**
  * =========================================
- * 🔍 GET MES TRANSFERTS (created_by)
+ * 🔍 GET MES TRANSFERTS
+ * created_by
  * =========================================
  */
 export async function getMyTransfertsService(
@@ -200,7 +288,9 @@ export async function getMyTransfertsService(
   }
 ) {
   if (!user?.id) {
-    throw new Error('Utilisateur non authentifié');
+    throw new Error(
+      'Utilisateur non authentifié'
+    );
   }
 
   return await getTransfertsByAgent(
@@ -223,12 +313,17 @@ export async function getTransfertsCaisseToProcessService(
   offset: number
 ) {
   if (!user?.id) {
-    throw new Error('Utilisateur non authentifié');
+    throw new Error(
+      'Utilisateur non authentifié'
+    );
   }
 
-  const role = user.role_name?.toUpperCase();
+  const role =
+    user.role_name?.toUpperCase();
 
-  // 🔴 ADMIN → tout
+  /**
+   * 🔴 ADMIN → tout
+   */
   if (role === 'ADMIN') {
     return await getAllTransfertsToProcess(
       limit,
@@ -236,10 +331,17 @@ export async function getTransfertsCaisseToProcessService(
     );
   }
 
-  // 🟡 N+1 / N+2 → agence
-  if (role === 'N+1' || role === 'N+2') {
+  /**
+   * 🟡 N+1 / N+2 → agence
+   */
+  if (
+    role === 'N+1' ||
+    role === 'N+2'
+  ) {
     if (!user.agence_id) {
-      throw new Error('Agence utilisateur manquante');
+      throw new Error(
+        'Agence utilisateur manquante'
+      );
     }
 
     return await getTransfertsCaisseToProcess(
@@ -249,16 +351,35 @@ export async function getTransfertsCaisseToProcessService(
     );
   }
 
-  // 🟢 CAISSIER → seulement ses caisses
-  const caisseRes = await db.query(
-    `SELECT id FROM caisse WHERE agent_id = $1`,
-    [user.id]
-  );
+  /**
+   * 🟢 CAISSIER
+   * seulement ses caisses
+   */
+  const caisseRes =
+    await db.query(
+      `
+      SELECT id
+      FROM caisse
+      WHERE agent_id = $1
+      `,
+      [user.id]
+    );
 
-  const caisseIds = caisseRes.rows.map(c => c.id);
+  /**
+   * 🔥 FIX TS
+   * explicit any
+   */
+  const caisseIds =
+    caisseRes.rows.map(
+      (c: any) => c.id
+    );
 
-  // 🔥 important : pas de throw ici
-  if (caisseIds.length === 0) {
+  /**
+   * pas de throw ici
+   */
+  if (
+    caisseIds.length === 0
+  ) {
     return {
       data: [],
       total: 0
