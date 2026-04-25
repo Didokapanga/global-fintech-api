@@ -1,4 +1,6 @@
-import { getDashboardOverview } from '../repositories/dashboard.repository.js';
+import {
+  getDashboardOverview
+} from '../repositories/dashboard.repository.js';
 
 /**
  * =========================================
@@ -8,6 +10,7 @@ import { getDashboardOverview } from '../repositories/dashboard.repository.js';
  * - total transfert client
  * - total retrait
  * - total transfert en attente validation
+ * - total retrait en attente validation
  *
  * filtre :
  * - date_operation (optionnel)

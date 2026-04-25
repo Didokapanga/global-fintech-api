@@ -8,6 +8,7 @@ import { query } from '../database/db.js';
  * - total transfert client
  * - total retrait
  * - total transfert en attente de validation
+ * - total retrait en attente de validation
  *
  * filtres :
  * - date_operation (optionnel)
@@ -33,15 +34,11 @@ export async function getDashboardOverview(
     `;
 
     /**
-     * retrait n’a pas forcément date_operation
-     * on filtre sur created_at::date
-     * si ta table retrait possède date_operation,
-     * remplace ceci par :
-     *
-     * AND date_operation = $1
+     * 🔥 ici on utilise date_operation
+     * car retrait possède maintenant cette colonne
      */
     dateFilterRetrait = `
-      AND DATE(created_at) = $1
+      AND date_operation = $1
     `;
   }
 
@@ -86,7 +83,7 @@ export async function getDashboardOverview(
    * statut = INITIE
    * =========================================
    */
-  const pendingValidationRes = await query(
+  const pendingTransfertValidationRes = await query(
     `
     SELECT
       COALESCE(SUM(montant), 0) AS total_volume,
@@ -94,6 +91,25 @@ export async function getDashboardOverview(
     FROM transfert_client
     WHERE statut = 'INITIE'
     ${dateFilterTransfert}
+    `,
+    params
+  );
+
+  /**
+   * =========================================
+   * 4. RETRAIT EN ATTENTE VALIDATION
+   *
+   * statut = INITIE
+   * =========================================
+   */
+  const pendingRetraitValidationRes = await query(
+    `
+    SELECT
+      COALESCE(SUM(montant), 0) AS total_volume,
+      COUNT(*) AS total_count
+    FROM retrait
+    WHERE statut = 'INITIE'
+    ${dateFilterRetrait}
     `,
     params
   );
@@ -119,10 +135,19 @@ export async function getDashboardOverview(
 
     transfert_en_attente_validation: {
       total_volume: Number(
-        pendingValidationRes[0]?.total_volume || 0
+        pendingTransfertValidationRes[0]?.total_volume || 0
       ),
       total_count: Number(
-        pendingValidationRes[0]?.total_count || 0
+        pendingTransfertValidationRes[0]?.total_count || 0
+      )
+    },
+
+    retrait_en_attente_validation: {
+      total_volume: Number(
+        pendingRetraitValidationRes[0]?.total_volume || 0
+      ),
+      total_count: Number(
+        pendingRetraitValidationRes[0]?.total_count || 0
       )
     }
   };

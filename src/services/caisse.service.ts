@@ -72,40 +72,92 @@ export async function getCaissesByAgenceService(agence_id: string) {
   return await getCaissesByAgence(agence_id);
 }
 
-export async function openCaisseService(id: string, user: any, meta?: any) {
+export async function openCaisseService(
+  id: string,
+  user: any,
+  meta?: any
+) {
   const caisse = await getCaisseById(id);
 
   if (!caisse) {
     throw new Error('Caisse not found');
   }
 
-  if (
-    caisse.agent_id !== user.id &&
-    user.role_name?.toUpperCase() !== 'ADMIN'
-  ) {
-    throw new Error('Vous ne pouvez pas ouvrir cette caisse');
+  const role =
+    user.role_name?.toUpperCase();
+
+  /**
+   * =========================================
+   * 🔥 LOGIQUE AUTORISATION
+   *
+   * 1. caisse caissier
+   * → agent_id existe
+   * → seul le propriétaire ou ADMIN
+   *
+   * 2. caisse agence
+   * → agent_id null
+   * → ADMIN / N+1 / N+2 de la même agence
+   * =========================================
+   */
+
+  // 🔵 CAISSE AGENCE
+  if (!caisse.agent_id) {
+    if (
+      caisse.agence_id !== user.agence_id ||
+      !['ADMIN', 'N+1', 'N+2'].includes(role)
+    ) {
+      throw new Error(
+        'Vous ne pouvez pas ouvrir cette caisse agence'
+      );
+    }
+  }
+
+  // 🟢 CAISSE CAISSIER
+  else {
+    if (
+      caisse.agent_id !== user.id &&
+      role !== 'ADMIN'
+    ) {
+      throw new Error(
+        'Vous ne pouvez pas ouvrir cette caisse'
+      );
+    }
   }
 
   if (caisse.state === 'OUVERTE') {
-    throw new Error('Caisse déjà ouverte');
+    throw new Error(
+      'Caisse déjà ouverte'
+    );
   }
 
   if (caisse.state === 'CLOTUREE') {
-    throw new Error('Caisse clôturée');
+    throw new Error(
+      'Caisse clôturée'
+    );
   }
 
   const oldState = caisse.state;
 
-  const updated = await updateCaisseState(id, 'OUVERTE');
+  const updated =
+    await updateCaisseState(
+      id,
+      'OUVERTE'
+    );
 
-  // 🔐 AUDIT
+  /**
+   * 🔐 AUDIT
+   */
   await logAudit({
     user_id: user.id,
     action: 'OPEN',
     table_name: 'caisse',
     code_reference: id,
-    old_data: { state: oldState },
-    new_data: { state: 'OUVERTE' },
+    old_data: {
+      state: oldState
+    },
+    new_data: {
+      state: 'OUVERTE'
+    },
     ip_address: meta?.ip,
     user_agent: meta?.user_agent
   });

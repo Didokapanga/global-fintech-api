@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import {
   retrait,
-  getMyRetraits
+  validateRetrait,
+  getMyRetraits,
+  getRetraitsToValidate
 } from '../controllers/retrait.controller.js';
 
 import { authMiddleware } from '../middlewares/auth.middleware.js';
@@ -13,33 +15,42 @@ const router = Router();
  * @swagger
  * tags:
  *   name: Retrait
- *   description: Gestion des retraits (cash-out sécurisé avec KYC)
+ *   description: Gestion des retraits (cash-out sécurisé avec validation hiérarchique)
  */
 
 /**
  * @swagger
  * /api/retraits:
  *   post:
- *     summary: Effectuer un retrait sécurisé
+ *     summary: Initier un retrait sécurisé
  *     description: |
- *       Permet de retirer un transfert client validé.
+ *       Permet au caissier d’initier un retrait
+ *       sur un transfert client déjà validé.
  *
- *       🔐 Sécurité multi-niveaux :
- *       - Vérification du code secret
- *       - Vérification du numéro de pièce du destinataire (KYC)
- *       - Vérification de l'agence de destination
- *       - Vérification que la caisse appartient à l'utilisateur connecté
- *       - Vérification que la caisse est ouverte
- *       - Vérification du solde disponible
+ *       🔐 Vérifications métier :
+ *       - vérification du code secret
+ *       - vérification du numéro de pièce du bénéficiaire (KYC)
+ *       - vérification de l’agence de destination
+ *       - vérification que la caisse appartient au caissier connecté
+ *       - vérification que la caisse est ouverte
  *
- *       ⚠️ Le retrait n'est possible que si le transfert est au statut :
+ *       ⚠️ Le transfert doit être au statut :
  *       VALIDE
  *
- *       📅 `date_operation` représente la vraie date métier
- *       du retrait (sans heure).
+ *       📌 Nouveau workflow :
  *
- *       📌 Le retrait passe automatiquement au statut :
- *       EXECUTE
+ *       CAISSIER :
+ *       → crée un retrait au statut INITIE
+ *
+ *       N+1 / N+2 / ADMIN :
+ *       → valide ensuite le retrait
+ *
+ *       🔥 Aucun débit immédiat
+ *       🔥 Aucun ledger immédiat
+ *
+ *       📅 `date_operation`
+ *       représente la vraie date métier
+ *       du retrait (sans heure)
  *
  *     tags: [Retrait]
  *     security:
@@ -66,17 +77,17 @@ const router = Router();
  *
  *               code_secret:
  *                 type: string
- *                 description: Code secret fourni au bénéficiaire
+ *                 description: Code secret remis au bénéficiaire
  *                 example: 123456
  *
  *               caisse_id:
  *                 type: string
- *                 description: ID de la caisse utilisée pour le retrait
- *                 example: 3f7c1e9a-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+ *                 description: ID de la caisse utilisée
+ *                 example: uuid-caisse
  *
  *               numero_piece:
  *                 type: string
- *                 description: Numéro de pièce d'identité du bénéficiaire
+ *                 description: Numéro de pièce du bénéficiaire
  *                 example: AB123456
  *
  *               date_operation:
@@ -87,25 +98,26 @@ const router = Router();
  *
  *     responses:
  *       200:
- *         description: Retrait effectué avec succès
+ *         description: Retrait initié avec succès
  *         content:
  *           application/json:
  *             example:
  *               success: true
- *               message: Retrait effectué
+ *               message: Retrait initié avec succès, en attente de validation
  *               data:
- *                 message: Retrait effectué avec succès
+ *                 id: uuid
+ *                 statut: INITIE
  *                 montant: 500
+ *                 devise: USD
  *
  *       400:
  *         description: |
  *           Erreur métier :
  *           - code secret invalide
- *           - pièce d'identité incorrecte
+ *           - pièce invalide
  *           - transfert non validé
  *           - transfert déjà retiré
  *           - caisse non autorisée
- *           - solde insuffisant
  *
  *       401:
  *         description: Non authentifié
@@ -122,18 +134,199 @@ router.post(
 
 /**
  * @swagger
+ * /api/retraits/validate:
+ *   post:
+ *     summary: Valider ou rejeter un retrait
+ *     description: |
+ *       Permet à un supérieur hiérarchique
+ *       (N+1 / N+2 / ADMIN)
+ *       de traiter un retrait INITIE.
+ *
+ *       📌 Si APPROUVE :
+ *       - débit réel de la caisse
+ *       - retrait → EXECUTE
+ *       - transfert client → EXECUTE
+ *       - création du ledger
+ *
+ *       📌 Si REJETE :
+ *       - retrait → REJETE
+ *       - aucun débit
+ *
+ *       🔐 Validation limitée :
+ *       - ADMIN → global
+ *       - N+1 / N+2 → uniquement leur agence
+ *
+ *     tags: [Retrait]
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - retrait_id
+ *               - decision
+ *
+ *             properties:
+ *               retrait_id:
+ *                 type: string
+ *                 description: ID du retrait à traiter
+ *                 example: uuid-retrait
+ *
+ *               decision:
+ *                 type: string
+ *                 enum:
+ *                   - APPROUVE
+ *                   - REJETE
+ *                 description: Décision de validation
+ *                 example: APPROUVE
+ *
+ *     responses:
+ *       200:
+ *         description: Retrait traité avec succès
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Retrait validé avec succès
+ *               data:
+ *                 id: uuid
+ *                 statut: EXECUTE
+ *
+ *       400:
+ *         description: Erreur métier
+ *
+ *       401:
+ *         description: Non authentifié
+ *
+ *       403:
+ *         description: Accès refusé
+ */
+router.post(
+  '/validate',
+  authMiddleware,
+  roleGuard(['ADMIN', 'N+1', 'N+2']),
+  validateRetrait
+);
+
+/**
+ * @swagger
+ * /api/retraits/validation:
+ *   get:
+ *     summary: Récupérer les retraits en attente de validation
+ *     description: |
+ *       Permet aux profils hiérarchiques
+ *       (ADMIN, N+1, N+2)
+ *       de consulter la liste des retraits
+ *       au statut **INITIE**
+ *       en attente de validation.
+ *
+ *       📌 Règles métier :
+ *
+ *       ADMIN :
+ *       → voit tous les retraits INITIE
+ *
+ *       N+1 / N+2 :
+ *       → voient uniquement
+ *       les retraits de leur agence
+ *
+ *       📊 Pagination incluse
+ *
+ *       🔎 Données enrichies :
+ *       - informations expéditeur
+ *       - informations destinataire
+ *       - code de référence transfert
+ *       - montant du transfert
+ *       - devise
+ *
+ *     tags: [Retrait]
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Numéro de page
+ *
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 10
+ *         description: Nombre d’éléments par page (max 100)
+ *
+ *     responses:
+ *       200:
+ *         description: Liste des retraits à valider récupérée avec succès
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               data:
+ *                 - id: uuid-retrait
+ *                   statut: INITIE
+ *                   montant: 500
+ *                   devise: USD
+ *                   date_operation: 2026-04-24
+ *                   code_reference: REF17123456789
+ *                   expediteur:
+ *                     nom: KABANGA
+ *                     postnom: MUTOMBO
+ *                     prenom: JEAN
+ *                     phone: 0999999999
+ *                   destinataire:
+ *                     nom: MUKENDI
+ *                     postnom: TSHIBALA
+ *                     prenom: JOEL
+ *                     phone: 0888888888
+ *
+ *               meta:
+ *                 total: 12
+ *                 page: 1
+ *                 limit: 10
+ *                 totalPages: 2
+ *
+ *       401:
+ *         description: Non authentifié
+ *
+ *       403:
+ *         description: Accès refusé
+ */
+router.get(
+  '/validation',
+  authMiddleware,
+  roleGuard([
+    'ADMIN',
+    'N+1',
+    'N+2',
+    'CAISSIER'
+  ]),
+  getRetraitsToValidate
+);
+
+/**
+ * @swagger
  * /api/retraits/me:
  *   get:
  *     summary: Historique des retraits de l'utilisateur connecté
  *     description: |
- *       Retourne la liste paginée des retraits effectués
- *       par l'utilisateur connecté.
+ *       Retourne la liste paginée
+ *       des retraits liés à l’utilisateur connecté.
  *
- *       🔎 Les données sont enrichies avec :
- *       - informations expéditeur
- *       - informations destinataire
- *       - code de référence du transfert
- *       - montant et devise du transfert
+ *       🔎 Données enrichies :
+ *       - expéditeur
+ *       - destinataire
+ *       - code de référence
+ *       - montant du transfert
+ *       - devise
  *
  *       📊 Filtres disponibles :
  *       - statut
@@ -150,14 +343,14 @@ router.post(
  *         name: page
  *         schema:
  *           type: integer
- *         description: Numéro de page (défaut 1)
+ *         description: Numéro de page
  *         example: 1
  *
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
- *         description: Nombre d’éléments par page (max 100)
+ *         description: Nombre d’éléments par page
  *         example: 10
  *
  *       - in: query
@@ -165,46 +358,19 @@ router.post(
  *         schema:
  *           type: string
  *         description: Filtrer par statut
- *         example: EXECUTE
+ *         example: INITIE
  *
  *       - in: query
  *         name: date_operation
  *         schema:
  *           type: string
  *           format: date
- *         description: Filtrer par date du retrait
+ *         description: Filtrer par date métier
  *         example: 2026-04-24
  *
  *     responses:
  *       200:
  *         description: Historique récupéré avec succès
- *         content:
- *           application/json:
- *             example:
- *               success: true
- *               data:
- *                 - id: uuid
- *                   montant: 500
- *                   devise: USD
- *                   statut: EXECUTE
- *                   date_operation: 2026-04-24
- *                   expediteur:
- *                     nom: KABANGA
- *                     postnom: MUTOMBO
- *                     prenom: JEAN
- *                     phone: 0999999999
- *                   destinataire:
- *                     nom: MUKENDI
- *                     postnom: TSHIBALA
- *                     prenom: JOEL
- *                     phone: 0888888888
- *                   code_reference: REF123456
- *
- *               meta:
- *                 total: 10
- *                 page: 1
- *                 limit: 10
- *                 totalPages: 1
  *
  *       401:
  *         description: Non authentifié
@@ -215,7 +381,12 @@ router.post(
 router.get(
   '/me',
   authMiddleware,
-  roleGuard(['CAISSIER', 'ADMIN', 'N+1', 'N+2']),
+  roleGuard([
+    'CAISSIER',
+    'ADMIN',
+    'N+1',
+    'N+2'
+  ]),
   getMyRetraits
 );
 

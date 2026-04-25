@@ -6,6 +6,8 @@ import {
   deleteAgence
 } from '../controllers/agence.controller.js';
 import { updateAgence } from '../repositories/agence.repository.js';
+import { authMiddleware } from '../middlewares/auth.middleware.js';
+import { roleGuard } from '../middlewares/role.middleware.js';
 
 const router = Router();
 
@@ -122,7 +124,13 @@ router.post('/', createAgence);
  *         description: Agence non trouvée
  */
 
-router.get('/:id', getAgence);
+router.get(
+  '/:id',
+    authMiddleware,
+      roleGuard([
+        'ADMIN',
+      ]), 
+    getAgence);
 
 /**
  * @swagger

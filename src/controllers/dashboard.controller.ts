@@ -26,6 +26,7 @@ import {
  * - total transfert client
  * - total retrait
  * - total transfert en attente validation
+ * - total retrait en attente validation
  *
  * en :
  * - volume

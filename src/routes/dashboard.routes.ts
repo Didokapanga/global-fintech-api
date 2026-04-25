@@ -39,6 +39,11 @@ const router = Router();
  *       - volume total
  *       - nombre total
  *
+ *       4. Retraits en attente de validation
+ *       - uniquement statut = INITIE
+ *       - volume total
+ *       - nombre total
+ *
  *       📅 Filtrage possible par :
  *       - date_operation
  *
@@ -84,6 +89,10 @@ const router = Router();
  *                 transfert_en_attente_validation:
  *                   total_volume: 5400
  *                   total_count: 7
+ *
+ *                 retrait_en_attente_validation:
+ *                   total_volume: 3200
+ *                   total_count: 4
  *
  *       400:
  *         description: Erreur de validation

@@ -25,6 +25,35 @@ export async function findTransfertForUpdate(
 
 /**
  * =========================================
+ * 🔍 récupérer retrait + LOCK
+ * =========================================
+ */
+export async function findRetraitForUpdate(
+  client: PoolClient,
+  retrait_id: string
+) {
+  const res = await client.query(
+    `
+    SELECT
+      r.*,
+      t.code_reference,
+      t.dest_numero_piece,
+      t.agence_dest,
+      t.statut AS transfert_statut
+    FROM retrait r
+    JOIN transfert_client t
+      ON t.id = r.transfert_id
+    WHERE r.id = $1
+    FOR UPDATE
+    `,
+    [retrait_id]
+  );
+
+  return res.rows[0];
+}
+
+/**
+ * =========================================
  * 🔍 récupérer caisse
  * =========================================
  */
@@ -47,8 +76,30 @@ export async function findCaisseForUpdate(
 
 /**
  * =========================================
+ * 🔍 vérifier si un retrait existe déjà
+ * pour ce transfert
+ * =========================================
+ */
+export async function findRetraitByTransfertId(
+  client: PoolClient,
+  transfert_id: string
+) {
+  const res = await client.query(
+    `
+    SELECT *
+    FROM retrait
+    WHERE transfert_id = $1
+    LIMIT 1
+    `,
+    [transfert_id]
+  );
+
+  return res.rows[0];
+}
+
+/**
+ * =========================================
  * 💾 CREATE RETRAIT
- * 🔥 date_operation envoyé depuis le body
  * =========================================
  */
 export async function createRetrait(
@@ -84,13 +135,61 @@ export async function createRetrait(
       data.numero_piece,
       data.montant,
       data.devise,
-      data.statut || 'EXECUTE',
+      data.statut || 'INITIE',
       data.created_by,
       data.date_operation
     ]
   );
 
   return res.rows[0];
+}
+
+/**
+ * =========================================
+ * 🔄 update statut retrait
+ * =========================================
+ */
+export async function updateRetraitStatus(
+  client: PoolClient,
+  retrait_id: string,
+  statut: string
+) {
+  const res = await client.query(
+    `
+    UPDATE retrait
+    SET
+      statut = $1,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = $2
+    RETURNING *
+    `,
+    [
+      statut,
+      retrait_id
+    ]
+  );
+
+  return res.rows[0];
+}
+
+/**
+ * =========================================
+ * 💰 débit caisse
+ * =========================================
+ */
+export async function debitCaisse(
+  client: PoolClient,
+  id: string,
+  montant: number
+) {
+  await client.query(
+    `
+    UPDATE caisse
+    SET solde = solde - $1
+    WHERE id = $2
+    `,
+    [montant, id]
+  );
 }
 
 /**
@@ -125,8 +224,9 @@ export async function updateTransfertToExecuted(
   await client.query(
     `
     UPDATE transfert_client
-    SET statut = 'EXECUTE',
-        updated_at = CURRENT_TIMESTAMP
+    SET
+      statut = 'EXECUTE',
+      updated_at = CURRENT_TIMESTAMP
     WHERE id = $1
     `,
     [id]
@@ -173,36 +273,33 @@ export async function insertLedger(
 
 /**
  * =========================================
- * 🔍 historique retrait par agent
- * + filtres :
- * - statut
- * - date_operation
+ * 🔍 retraits à valider
+ *
+ * ADMIN :
+ * → tous les retraits INITIE
+ *
+ * N+1 / N+2 :
+ * → seulement son agence
  * =========================================
  */
-export async function getRetraitsByAgent(
-  agent_id: string,
+export async function getRetraitsToValidate(
+  agence_id: string | null,
+  isAdmin: boolean,
   limit: number,
-  offset: number,
-  filters: {
-    statut?: string;
-    date_operation?: string;
-  }
+  offset: number
 ) {
-  let where = `WHERE r.created_by = $1`;
-  const values: any[] = [agent_id];
-  let index = 2;
+  let where = `
+    WHERE r.statut = 'INITIE'
+  `;
 
-  // 🔥 filtre statut
-  if (filters.statut) {
-    where += ` AND r.statut = $${index}`;
-    values.push(filters.statut);
-    index++;
-  }
+  const values: any[] = [];
+  let index = 1;
 
-  // 🔥 filtre date_operation
-  if (filters.date_operation) {
-    where += ` AND DATE(r.date_operation) = $${index}`;
-    values.push(filters.date_operation);
+  if (!isAdmin) {
+    where += `
+      AND r.agence_id = $${index}
+    `;
+    values.push(agence_id);
     index++;
   }
 
@@ -211,7 +308,6 @@ export async function getRetraitsByAgent(
     SELECT
       r.*,
 
-      -- 🔥 EXPEDITEUR STRUCTURÉ
       json_build_object(
         'nom', t.exp_nom,
         'postnom', t.exp_postnom,
@@ -219,7 +315,6 @@ export async function getRetraitsByAgent(
         'phone', t.exp_phone
       ) AS expediteur,
 
-      -- 🔥 DESTINATAIRE STRUCTURÉ
       json_build_object(
         'nom', t.dest_nom,
         'postnom', t.dest_postnom,
@@ -238,7 +333,8 @@ export async function getRetraitsByAgent(
     ${where}
 
     ORDER BY r.date_operation DESC
-    LIMIT $${index} OFFSET $${index + 1}
+    LIMIT $${index}
+    OFFSET $${index + 1}
     `,
     [
       ...values,
@@ -258,6 +354,102 @@ export async function getRetraitsByAgent(
 
   return {
     data: dataRes.rows,
-    total: Number(countRes.rows[0].count)
+    total: Number(
+      countRes.rows[0].count
+    )
+  };
+}
+
+/**
+ * =========================================
+ * 🔍 historique retrait par agent
+ * =========================================
+ */
+export async function getRetraitsByAgent(
+  agent_id: string,
+  limit: number,
+  offset: number,
+  filters: {
+    statut?: string;
+    date_operation?: string;
+  }
+) {
+  let where = `
+    WHERE r.created_by = $1
+  `;
+
+  const values: any[] = [agent_id];
+  let index = 2;
+
+  if (filters.statut) {
+    where += `
+      AND r.statut = $${index}
+    `;
+    values.push(filters.statut);
+    index++;
+  }
+
+  if (filters.date_operation) {
+    where += `
+      AND DATE(r.date_operation) = $${index}
+    `;
+    values.push(filters.date_operation);
+    index++;
+  }
+
+  const dataRes = await db.query(
+    `
+    SELECT
+      r.*,
+
+      json_build_object(
+        'nom', t.exp_nom,
+        'postnom', t.exp_postnom,
+        'prenom', t.exp_prenom,
+        'phone', t.exp_phone
+      ) AS expediteur,
+
+      json_build_object(
+        'nom', t.dest_nom,
+        'postnom', t.dest_postnom,
+        'prenom', t.dest_prenom,
+        'phone', t.dest_phone
+      ) AS destinataire,
+
+      t.code_reference,
+      t.montant AS transfert_montant,
+      t.devise AS transfert_devise
+
+    FROM retrait r
+    JOIN transfert_client t
+      ON r.transfert_id = t.id
+
+    ${where}
+
+    ORDER BY r.date_operation DESC
+    LIMIT $${index}
+    OFFSET $${index + 1}
+    `,
+    [
+      ...values,
+      limit,
+      offset
+    ]
+  );
+
+  const countRes = await db.query(
+    `
+    SELECT COUNT(*)
+    FROM retrait r
+    ${where}
+    `,
+    [...values]
+  );
+
+  return {
+    data: dataRes.rows,
+    total: Number(
+      countRes.rows[0].count
+    )
   };
 }
