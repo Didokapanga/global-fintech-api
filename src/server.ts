@@ -1,31 +1,75 @@
-import 'dotenv/config'; // 🔥 IMPORTANT (remplace dotenv.config())
+import 'dotenv/config';
 
 import app from './app.js';
 import { db } from './database/connection.js';
 
-console.log('PORT ENV:', process.env.PORT);
-
 const PORT = Number(process.env.PORT) || 3000;
 
-process.on('uncaughtException', (err) => {
-  console.error('❌ UNCAUGHT EXCEPTION:', err);
-});
+/**
+ * =========================================
+ * 🔥 UNCAUGHT EXCEPTION
+ * =========================================
+ */
+process.on(
+  'uncaughtException',
+  (err: Error) => {
+    console.error(
+      '❌ UNCAUGHT EXCEPTION:',
+      err
+    );
+  }
+);
 
-process.on('unhandledRejection', (reason) => {
-  console.error('❌ UNHANDLED REJECTION:', reason);
-});
+/**
+ * =========================================
+ * 🔥 UNHANDLED REJECTION
+ * =========================================
+ */
+process.on(
+  'unhandledRejection',
+  (reason: unknown) => {
+    console.error(
+      '❌ UNHANDLED REJECTION:',
+      reason
+    );
+  }
+);
 
+/**
+ * =========================================
+ * 🚀 START SERVER
+ * =========================================
+ */
 async function startServer() {
   try {
+    /**
+     * test connexion DB
+     */
     await db.query('SELECT 1');
-    console.log('✅ Database connected');
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
+    console.log(
+      '✅ Database connected'
+    );
 
-  } catch (error) {
-    console.error('❌ Database connection failed:', error);
+    /**
+     * start express
+     */
+    app.listen(
+      PORT,
+      '0.0.0.0',
+      () => {
+        console.log(
+          `🚀 Server running on port ${PORT}`
+        );
+      }
+    );
+
+  } catch (error: unknown) {
+    console.error(
+      '❌ Database connection failed:',
+      error
+    );
+
     process.exit(1);
   }
 }
