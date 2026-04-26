@@ -12,12 +12,7 @@ import clientRoutes from './routes/client.routes.js';
 import retraitRoutes from './routes/retrait.routes.js';
 import validationRoutes from './routes/validation.routes.js';
 import clotureRoutes from './routes/clotureCaisse.routes.js';
-// import clotureValidationRoutes from './routes/clotureValidation.routes.js'
 import ledgerRoutes from './routes/ledger.routes.js';
-
-/**
- * 🔥 AJOUT DASHBOARD
- */
 import dashboardRoutes from './routes/dashboard.routes.js';
 
 import swaggerUi from 'swagger-ui-express';
@@ -38,10 +33,26 @@ app.use(
 
 /**
  * =========================================
+ * CORS ORIGINS
+ * =========================================
+ */
+const allowedOrigins = [
+  'http://localhost:5173',
+  process.env.FRONTEND_URL
+].filter(Boolean) as string[];
+
+/**
+ * =========================================
  * MIDDLEWARES
  * =========================================
  */
-app.use(cors());
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true
+  })
+);
+
 app.use(express.json());
 
 /**
@@ -60,12 +71,7 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/retraits', retraitRoutes);
 app.use('/api/validations', validationRoutes);
 app.use('/api/clotures', clotureRoutes);
-// app.use('/api/clotures', clotureValidationRoutes);
 app.use('/api/ledger', ledgerRoutes);
-
-/**
- * 🔥 DASHBOARD ROUTE
- */
 app.use('/api/dashboard', dashboardRoutes);
 
 export default app;
