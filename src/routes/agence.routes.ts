@@ -67,7 +67,22 @@ router.get('/', getAgences);
  * /api/agences:
  *   post:
  *     summary: Créer une agence
+ *     description: |
+ *       Permet de créer une nouvelle agence.
+ *
+ *       🔥 Le champ `code_agence` est généré automatiquement
+ *       par le système selon la logique suivante :
+ *
+ *       - 100000
+ *       - 101000
+ *       - 102000
+ *       - 103000
+ *       - etc.
+ *
+ *       Le frontend ne doit donc plus envoyer `code_agence`.
+ *
  *     tags: [Agences]
+ *
  *     requestBody:
  *       required: true
  *       content:
@@ -76,32 +91,57 @@ router.get('/', getAgences);
  *             type: object
  *             required:
  *               - libelle
- *               - code_agence
  *               - ville
+ *
  *             properties:
  *               libelle:
  *                 type: string
- *                 example: "Agence Kinshasa Centre"
- *               code_agence:
- *                 type: string
- *                 example: "KIN001"
+ *                 description: Nom de l’agence
+ *                 example: Agence Kinshasa Centre
+ *
  *               ville:
  *                 type: string
- *                 example: "Kinshasa"
+ *                 description: Ville de l’agence
+ *                 example: Kinshasa
+ *
  *               commune:
  *                 type: string
- *                 example: "Gombe"
+ *                 description: Commune de l’agence
+ *                 example: Gombe
+ *
  *               quartier:
  *                 type: string
- *                 example: "Centre"
+ *                 description: Quartier de l’agence
+ *                 example: Centre
+ *
  *     responses:
  *       200:
  *         description: Agence créée avec succès
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Agence créée avec succès
+ *               data:
+ *                 id: uuid
+ *                 libelle: Agence Kinshasa Centre
+ *                 code_agence: "100000"
+ *                 ville: Kinshasa
+ *                 commune: Gombe
+ *                 quartier: Centre
+ *
  *       400:
  *         description: Données invalides
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: false
+ *               message: libelle et ville sont requis
  */
-
-router.post('/', createAgence);
+router.post(
+  '/',
+  createAgence
+);
 
 /**
  * @swagger

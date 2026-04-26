@@ -3,7 +3,8 @@ import {
   getAgenceById,
   createAgence,
   softDeleteAgence,
-  updateAgence
+  updateAgence,
+  getLastAgenceCode
 } from '../repositories/agence.repository.js';
 
 export async function getAgencesService(
@@ -24,12 +25,51 @@ export async function getAgenceService(id: string) {
   return agence;
 }
 
+/**
+ * =========================================
+ * 🏢 CREATE AGENCE
+ *
+ * code_agence auto :
+ * 100000
+ * 101000
+ * 102000
+ * ...
+ * =========================================
+ */
 export async function createAgenceService(data: any) {
-  if (!data.libelle || !data.code_agence || !data.ville) {
-    throw new Error('Missing required fields');
+  if (!data.libelle || !data.ville) {
+    throw new Error(
+      'libelle et ville sont requis'
+    );
   }
 
-  return await createAgence(data);
+  /**
+   * ==========================
+   * Génération code agence
+   * ==========================
+   */
+  const lastAgence =
+    await getLastAgenceCode();
+
+  let nextCode = 100000;
+
+  if (
+    lastAgence &&
+    lastAgence.code_agence
+  ) {
+    nextCode =
+      Number(lastAgence.code_agence) + 1000;
+  }
+
+  /**
+   * ==========================
+   * Create
+   * ==========================
+   */
+  return await createAgence({
+    ...data,
+    code_agence: String(nextCode)
+  });
 }
 
 export async function updateAgenceService(id: string, data: any) {

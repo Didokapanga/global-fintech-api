@@ -29,12 +29,47 @@ export async function getAgenceById(id: string) {
   return result[0];
 }
 
+/**
+ * =========================================
+ * 🔍 Récupérer le dernier code agence
+ * =========================================
+ */
+export async function getLastAgenceCode() {
+  const result = await query(
+    `
+    SELECT code_agence
+    FROM agence
+    ORDER BY code_agence DESC
+    LIMIT 1
+    `
+  );
+
+  return result[0];
+}
+
+/**
+ * =========================================
+ * 💾 Créer agence
+ * code_agence généré automatiquement
+ * =========================================
+ */
 export async function createAgence(data: any) {
   const result = await query(
-    `INSERT INTO agence 
-    (libelle, code_agence, ville, commune, quartier)
-    VALUES ($1,$2,$3,$4,$5)
-    RETURNING *`,
+    `
+    INSERT INTO agence
+    (
+      libelle,
+      code_agence,
+      ville,
+      commune,
+      quartier
+    )
+    VALUES
+    (
+      $1,$2,$3,$4,$5
+    )
+    RETURNING *
+    `,
     [
       data.libelle,
       data.code_agence,
@@ -46,6 +81,24 @@ export async function createAgence(data: any) {
 
   return result[0];
 }
+
+// export async function createAgence(data: any) {
+//   const result = await query(
+//     `INSERT INTO agence 
+//     (libelle, code_agence, ville, commune, quartier)
+//     VALUES ($1,$2,$3,$4,$5)
+//     RETURNING *`,
+//     [
+//       data.libelle,
+//       data.code_agence,
+//       data.ville,
+//       data.commune,
+//       data.quartier
+//     ]
+//   );
+
+//   return result[0];
+// }
 
 export async function updateAgence(id: string, data: any) {
   const result = await query(

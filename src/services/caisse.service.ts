@@ -1,22 +1,118 @@
 import {
   createCaisse,
+  getAgenceById,
   getAllCaisses,
   getCaisseById,
   getCaissesByAgence,
   getCaissesByAgencePaginated,
   getCaissesByAgent,
+  getLastCaisseCodeByAgence,
   softDeleteCaisse,
   updateCaisse,
   updateCaisseState
 } from '../repositories/caisse.repository.js';
 import { logAudit } from '../utils/auditLogger.js';
 
+/**
+ * =========================================
+ * 🏦 CREATE CAISSE
+ *
+ * code_caisse auto :
+ *
+ * agence 100000
+ * → 100001
+ * → 100002
+ * → 100003
+ *
+ * agence 101000
+ * → 101001
+ * → 101002
+ *
+ * Le frontend n’envoie plus code_caisse
+ * =========================================
+ */
 export async function createCaisseService(data: any) {
-  if (!data.agence_id || !data.type || !data.devise || !data.code_caisse) {
-    throw new Error('Missing required fields');
+  if (
+    !data.agence_id ||
+    !data.type ||
+    !data.devise
+  ) {
+    throw new Error(
+      'agence_id, type et devise sont requis'
+    );
   }
 
-  return await createCaisse(data);
+  /**
+   * ==========================
+   * Vérifier agence
+   * ==========================
+   */
+  const agence =
+    await getAgenceById(
+      data.agence_id
+    );
+
+  if (!agence) {
+    throw new Error(
+      'Agence introuvable'
+    );
+  }
+
+  if (!agence.code_agence) {
+    throw new Error(
+      'Code agence introuvable'
+    );
+  }
+
+  /**
+   * ==========================
+   * Dernière caisse de l’agence
+   * ==========================
+   */
+  const lastCaisse =
+    await getLastCaisseCodeByAgence(
+      data.agence_id
+    );
+
+  let nextCode: number;
+
+  /**
+   * ==========================
+   * Première caisse
+   *
+   * ex:
+   * agence 100000
+   * => première caisse 100001
+   * ==========================
+   */
+  if (
+    !lastCaisse ||
+    !lastCaisse.code_caisse
+  ) {
+    nextCode =
+      Number(agence.code_agence) + 1;
+  } else {
+    /**
+     * ==========================
+     * Caisse suivante
+     *
+     * ex:
+     * 100001 → 100002
+     * ==========================
+     */
+    nextCode =
+      Number(lastCaisse.code_caisse) + 1;
+  }
+
+  /**
+   * ==========================
+   * Create
+   * ==========================
+   */
+  return await createCaisse({
+    ...data,
+    code_caisse: String(nextCode)
+  });
 }
 
 export async function getCaissesService(

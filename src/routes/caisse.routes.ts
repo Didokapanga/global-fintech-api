@@ -42,7 +42,38 @@ router.get(
  * /api/caisses:
  *   post:
  *     summary: Créer une caisse
+ *     description: |
+ *       Permet de créer une nouvelle caisse.
+ *
+ *       🔥 Le champ `code_caisse` est généré automatiquement
+ *       par le système selon le code agence.
+ *
+ *       Exemple :
+ *
+ *       Si l’agence possède :
+ *       - code_agence = 100000
+ *
+ *       alors les caisses seront :
+ *       - 100001
+ *       - 100002
+ *       - 100003
+ *
+ *       Si l’agence possède :
+ *       - code_agence = 101000
+ *
+ *       alors :
+ *       - 101001
+ *       - 101002
+ *
+ *       Le frontend ne doit donc plus envoyer `code_caisse`.
+ *
+ *       📌 La caisse est créée par défaut avec :
+ *       - state = FERMEE
+ *
  *     tags: [Caisses]
+ *     security:
+ *       - bearerAuth: []
+ *
  *     requestBody:
  *       required: true
  *       content:
@@ -53,34 +84,61 @@ router.get(
  *               - agence_id
  *               - type
  *               - devise
- *               - code_caisse
+ *
  *             properties:
  *               agence_id:
  *                 type: string
- *                 example: "uuid"
+ *                 description: ID de l’agence propriétaire
+ *                 example: uuid-agence
+ *
  *               agent_id:
  *                 type: string
- *                 example: "uuid"
+ *                 description: |
+ *                   ID du caissier assigné.
+ *                   Peut être null pour une caisse agence.
+ *                 example: uuid-agent
+ *
  *               type:
  *                 type: string
- *                 example: "AGENCE"
+ *                 description: Type de caisse
+ *                 example: AGENCE
+ *
  *               devise:
  *                 type: string
- *                 example: "USD"
- *               code_caisse:
- *                 type: string
- *                 example: "CAISSE001"
+ *                 description: Devise principale de la caisse
+ *                 example: USD
+ *
  *     responses:
  *       200:
  *         description: Caisse créée avec succès
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: true
+ *               message: Caisse créée avec succès
+ *               data:
+ *                 id: uuid
+ *                 agence_id: uuid-agence
+ *                 agent_id: uuid-agent
+ *                 type: AGENCE
+ *                 devise: USD
+ *                 code_caisse: "100001"
+ *                 state: FERMEE
+ *
  *       400:
  *         description: Données invalides
+ *         content:
+ *           application/json:
+ *             example:
+ *               success: false
+ *               message: agence_id, type et devise sont requis
  */
 router.post(
-  '/', 
+  '/',
   authMiddleware,
   roleGuard(['ADMIN', 'N+1', 'N+2']),
-  createCaisse);
+  createCaisse
+);
 
 /**
  * @swagger
